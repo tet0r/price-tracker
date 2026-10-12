@@ -2,6 +2,8 @@
 
 Self-hosted price tracker. Paste a product URL from any site; it records the price, re-checks on a schedule, charts the history, and alerts you on drops. Feature set modelled on [PriceBuddy](https://pricebuddy.jez.me/features.html), in a single container with SQLite.
 
+![Price Tracker dashboard showing tracked products with pictures, prices and price history](docs/screenshot.png)
+
 ## Install
 
 ```bash
