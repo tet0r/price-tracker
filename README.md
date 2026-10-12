@@ -22,7 +22,7 @@ docker compose pull && docker compose up -d
 
 The running version is shown at the bottom of the page. Twice a day the app asks GitHub whether a newer release exists; when one does you get a banner, an in-app alert, and a message on Discord / your Apprise services. Set `UPDATE_CHECK: "false"` to turn this off. To stay on a specific release, use an image tag such as `ghcr.io/tet0r/price-tracker:1.0.0` instead of `:latest`.
 
-Releases are cut by changing the number in the `VERSION` file: the first push to `main` with a new number publishes that image tag and a GitHub release.
+Releases are cut by changing the number in the `VERSION` file: the first push to `main` with a new number publishes that image tag and a GitHub release. Changes are listed in [CHANGELOG.md](CHANGELOG.md); a version's section there becomes its release notes.
 
 ## Features
 
