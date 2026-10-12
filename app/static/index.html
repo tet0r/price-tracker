@@ -5,18 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Price Tracker</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script>
+  // Set before first paint to avoid a flash: the saved choice, else the system setting
+  const storedTheme = () => { try { return localStorage.getItem("theme"); } catch { return null; } };
+  const systemDark = matchMedia("(prefers-color-scheme: dark)");
+  const applyTheme = () => document.documentElement.dataset.theme = storedTheme() || (systemDark.matches ? "dark" : "light");
+  applyTheme();
+</script>
 <style>
   :root {
+    color-scheme: light; --on-accent: #fff;
     --bg: #f5f6f8; --card: #fff; --text: #1a1d23; --muted: #6b7280; --line: #e3e5ea;
     --accent: #2563eb; --down: #15803d; --down-bg: #dcfce7; --up: #b91c1c; --up-bg: #fee2e2;
     --warn: #92400e; --warn-bg: #fef3c7;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #111318; --card: #1b1e25; --text: #e8eaee; --muted: #9299a6; --line: #2c313b;
-      --accent: #6ea0ff; --down: #4ade80; --down-bg: #12301f; --up: #f87171; --up-bg: #3a1717;
-      --warn: #fbbf24; --warn-bg: #3a2c0b;
-    }
+  :root[data-theme=dark] {
+    color-scheme: dark; --on-accent: #0b1020;
+    --bg: #111318; --card: #1b1e25; --text: #e8eaee; --muted: #9299a6; --line: #2c313b;
+    --accent: #6ea0ff; --down: #4ade80; --down-bg: #12301f; --up: #f87171; --up-bg: #3a1717;
+    --warn: #fbbf24; --warn-bg: #3a2c0b;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
@@ -37,8 +44,7 @@
            padding: 8px 13px; cursor: pointer; white-space: nowrap; }
   button:hover { border-color: var(--muted); }
   button:disabled { opacity: .55; cursor: default; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  @media (prefers-color-scheme: dark) { button.primary { color: #0b1020; } }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
   button.danger { color: var(--up); }
   button.small { padding: 3px 9px; font-size: 13px; }
   .count { background: var(--up); color: #fff; border-radius: 99px; padding: 0 6px; font-size: 12px; margin-left: 4px; }
@@ -140,6 +146,7 @@
   <header>
     <h1>Price Tracker</h1>
     <nav><a href="#/" data-view="dashboard">Products</a><a href="#/stores" data-view="stores">Stores</a></nav>
+    <button id="theme-toggle" aria-label="Switch between light and dark mode"></button>
     <button id="open-customize">Customize</button>
     <button id="open-alerts">Alerts<span class="count" id="unread" hidden></span></button>
     <button id="open-settings">Settings</button>
@@ -870,6 +877,19 @@ $("#test-notify").addEventListener("click", e => busy(e.target, "Sending…", as
 document.addEventListener("click", e => {
   if (e.target.matches("[data-close]")) e.target.closest("dialog").close();
 });
+
+function showTheme() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  $("#theme-toggle").textContent = dark ? "☀ Light" : "☾ Dark";
+}
+$("#theme-toggle").addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  try { localStorage.setItem("theme", next); } catch {}
+  applyTheme(); showTheme();
+});
+// Until a choice is saved, keep following the system setting
+systemDark.addEventListener("change", () => { applyTheme(); showTheme(); });
+showTheme();
 
 function route() {
   const view = location.hash === "#/stores" ? "stores" : "dashboard";
