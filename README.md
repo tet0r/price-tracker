@@ -27,7 +27,6 @@ Open http://localhost:8080. Data lives in `./data/tracker.db` — back up that f
 - **AI-assisted scraping** (optional) — recover a price the rules miss, or have AI propose a store's rules.
 - **JavaScript sites** — falls back to headless Chromium when a plain HTTP request is blocked or finds no price.
 - **Duplicate detection** — tracking parameters (`utm_*`, `gclid`, `fbclid`, Amazon `ref`, …) are ignored when matching URLs.
-- **Browser extension** and **CLI / MCP server** — see below.
 
 ## Stores
 
@@ -64,42 +63,6 @@ Off by default. Under **Settings → AI-assisted scraping** choose Anthropic, Op
 - **Suggest rules with AI** — proposes CSS selectors from a product URL, shows what they extract, and saves nothing until you click Save.
 
 The page's HTML (scripts and styling removed) is sent to the provider you choose. Pages over 150,000 characters after cleaning are cut to that length.
-
-## Browser extension (Chrome / Edge)
-
-1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the `extension/` folder.
-2. Click the extension, enter your Price Tracker address (and login, if you set one).
-
-On any product page it shows whether you track it, the best price and each store's price, and tracks it in one click. The login is stored in the browser's extension storage unencrypted.
-
-## CLI and MCP
-
-`cli/pricetracker.py` needs only Python 3.10+, no packages.
-
-```bash
-export PRICETRACKER_URL=http://localhost:8080   # plus PRICETRACKER_USER / PRICETRACKER_PASSWORD if you set a login
-python cli/pricetracker.py list
-python cli/pricetracker.py deals
-python cli/pricetracker.py drops --days 14
-python cli/pricetracker.py add https://example.com/product
-python cli/pricetracker.py show 3
-```
-
-Other commands: `history`, `add-source`, `check`, `stores`, `search`. Add `--json` before the command for raw output.
-
-`python cli/pricetracker.py mcp` runs an MCP server over stdio so an AI assistant can read and add to your tracker. Example client config:
-
-```json
-{
-  "mcpServers": {
-    "price-tracker": {
-      "command": "python",
-      "args": ["/path/to/cli/pricetracker.py", "mcp"],
-      "env": { "PRICETRACKER_URL": "http://localhost:8080" }
-    }
-  }
-}
-```
 
 ## Configuration (`docker-compose.yml`)
 

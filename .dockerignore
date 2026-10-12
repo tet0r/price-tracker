@@ -3,6 +3,4 @@ data
 __pycache__
 *.pyc
 README.md
-cli
-extension
 LICENSE

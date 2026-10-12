@@ -371,13 +371,6 @@ def order_products(body: OrderIn):
         db.execute("UPDATE products SET position = ? WHERE id = ?", (position, product_id))
 
 
-@app.get("/api/lookup")
-def lookup(url: str):
-    """The product tracking this URL, if any. Used by the browser extension."""
-    rows = db.query("SELECT product_id FROM urls WHERE url_key = ?", (url_key(normalize_url(url)),))
-    return serialize(get_product(rows[0]["product_id"])) if rows else None
-
-
 @app.post("/api/products", status_code=201)
 async def add_product(body: UrlIn):
     url = normalize_url(body.url)
@@ -669,3 +662,9 @@ async def test_notification():
 @app.get("/")
 def index():
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/favicon.svg")
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(STATIC / "favicon.svg", media_type="image/svg+xml")
