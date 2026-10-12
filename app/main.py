@@ -38,6 +38,8 @@ TRACKING_PARAMS = {
     "ref", "ref_", "tag", "linkcode", "linkid", "_encoding", "spm", "scm", "cmpid",
 }
 TRACKING_PREFIXES = ("utm_", "pd_rd_", "pf_rd_", "hsa_", "mkt_")
+DISCORD_WEBHOOK_RE = re.compile(r"https://(ptb\.|canary\.)?discord(app)?\.com/api/webhooks/\d+/[\w-]+")
+DISCORD_COLORS = {"drop": 0x16A34A, "target": 0x2563EB, "stock": 0xD97706}
 
 
 # ---------- helpers ----------
@@ -167,15 +169,37 @@ async def send_external(title: str, body: str) -> bool:
     return bool(await asyncio.to_thread(notifier.notify, title=title, body=body))
 
 
-async def notify(product: dict, title: str, body: str) -> None:
+async def send_discord(title: str, body: str, link: str = "", image: str = "", kind: str = "drop") -> bool:
+    """Post an alert to the Discord channel webhook as an embed. False if none is set."""
+    webhook = db.get_setting("discord_webhook")
+    if not webhook:
+        return False
+    embed = {"title": title[:256], "description": body[:2000], "color": DISCORD_COLORS[kind]}
+    if link:
+        embed["url"] = link
+    if image:
+        embed["thumbnail"] = {"url": image}
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(webhook, json={"username": "Price Tracker", "embeds": [embed]})
+    if resp.status_code >= 400:
+        log.warning("Discord webhook returned HTTP %s: %s", resp.status_code, resp.text[:200])
+        return False
+    return True
+
+
+async def notify(product: dict, title: str, body: str, link: str = "", kind: str = "drop") -> None:
     db.execute(
         "INSERT INTO notifications (product_id, title, body, created_at) VALUES (?, ?, ?, ?)",
-        (product["id"], title, body, int(time.time())),
+        (product["id"], title, f"{body}\n{link}" if link else body, int(time.time())),
     )
-    try:
-        await send_external(title, body)
-    except Exception:
-        log.exception("notification failed")
+    for send in (
+        lambda: send_discord(title, body, link, product["image"] or "", kind),
+        lambda: send_external(title, f"{body}\n{link}" if link else body),
+    ):
+        try:
+            await send()
+        except Exception:
+            log.exception("notification failed")
 
 
 async def notify_changes(product: dict, old: float | None, new: float | None, was_sold_out: bool) -> None:
@@ -189,16 +213,18 @@ async def notify_changes(product: dict, old: float | None, new: float | None, wa
         amount = f"{value:,.2f} {source['currency']}" if source["currency"] else f"{value:,.2f}"
         return amount + per_unit
 
-    where = f" at {source['store']}\n{source['url']}"
+    where, link = f" at {source['store']}", source["url"]
     target = product["target_price"]
     if was_sold_out and product["notify_back_in_stock"]:
-        await notify(product, f"Back in stock: {name}", f"{money(new)}{where}")
+        await notify(product, f"Back in stock: {name}", f"{money(new)}{where}", link, "stock")
     if target is not None and new <= target and (old is None or old > target):
-        await notify(product, f"Target price reached: {name}", f"{money(new)} (target {money(target)}){where}")
+        await notify(product, f"Target price reached: {name}",
+                     f"{money(new)} (target {money(target)}){where}", link, "target")
     elif product["notify_on_drop"] and old is not None and new < old:
         percent = (old - new) / old * 100
         if percent >= product["drop_percent"]:
-            await notify(product, f"Price drop: {name}", f"{money(old)} → {money(new)} (-{percent:.1f}%){where}")
+            await notify(product, f"Price drop: {name}",
+                         f"{money(old)} → {money(new)} (-{percent:.1f}%){where}", link, "drop")
 
 
 # ---------- checking ----------
@@ -534,6 +560,7 @@ async def search(q: str):
 
 class SettingsIn(BaseModel):
     notify_urls: str = ""
+    discord_webhook: str = ""
     searxng_url: str = ""
     ai_provider: str = ""
     ai_model: str = ""
@@ -557,6 +584,7 @@ def get_settings():
     """Everything the UI needs. The AI key itself is never sent back."""
     return {
         "notify_urls": db.get_setting("notify_urls"),
+        "discord_webhook": db.get_setting("discord_webhook"),
         "searxng_url": db.get_setting("searxng_url") or SEARXNG_URL,
         "ai_provider": db.get_setting("ai_provider"),
         "ai_model": db.get_setting("ai_model"),
@@ -571,7 +599,10 @@ def get_settings():
 def put_settings(body: SettingsIn):
     if body.ai_provider and body.ai_provider not in ai.PROVIDERS:
         raise HTTPException(400, "Unknown AI provider")
-    for key in ("notify_urls", "searxng_url", "ai_provider", "ai_model", "ai_base_url"):
+    webhook = body.discord_webhook.strip()
+    if webhook and not DISCORD_WEBHOOK_RE.fullmatch(webhook):
+        raise HTTPException(400, "That isn't a Discord webhook URL (https://discord.com/api/webhooks/…)")
+    for key in ("notify_urls", "discord_webhook", "searxng_url", "ai_provider", "ai_model", "ai_base_url"):
         db.set_setting(key, getattr(body, key).strip())
     if body.ai_api_key.strip():
         db.set_setting("ai_api_key", body.ai_api_key.strip())
@@ -586,11 +617,23 @@ def put_dashboard(body: dict):
 
 @app.post("/api/settings/test")
 async def test_notification():
-    if not db.get_setting("notify_urls").strip():
-        raise HTTPException(400, "Save at least one notification URL first")
-    if not await send_external("Price Tracker", "Test notification — alerts are working."):
-        raise HTTPException(502, "Notification failed — check the URL format and container logs")
-    return {"ok": True}
+    """Send a test alert to every configured service and say which ones accepted it."""
+    targets = {"Discord": (db.get_setting("discord_webhook"), send_discord),
+               "Apprise": (db.get_setting("notify_urls").strip(), send_external)}
+    results = {}
+    for name, (configured, send) in targets.items():
+        if configured:
+            try:
+                results[name] = await send("Price Tracker", "Test notification — alerts are working.")
+            except Exception:
+                log.exception("test notification failed")
+                results[name] = False
+    if not results:
+        raise HTTPException(400, "Add a Discord webhook or an Apprise URL first")
+    failed = [name for name, ok in results.items() if not ok]
+    if failed:
+        raise HTTPException(502, f"{' and '.join(failed)} failed — check the URL and the container logs")
+    return {"sent": list(results)}
 
 
 @app.get("/")

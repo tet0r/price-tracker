@@ -218,11 +218,13 @@
 <dialog id="settings">
   <form id="settings-form">
     <h2>Settings</h2>
-    <h3 style="margin-top:0">Notification services</h3>
-    <label>Apprise URLs, one per line
+    <h3 style="margin-top:0">Notifications</h3>
+    <label>Discord webhook URL <input name="discord_webhook" placeholder="https://discord.com/api/webhooks/…" spellcheck="false" autocomplete="off"></label>
+    <p class="hint">Posts price drops, target prices reached and back-in-stock alerts to a Discord channel. In Discord: channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.</p>
+    <label>Other services: Apprise URLs, one per line
       <textarea name="notify_urls" rows="3" spellcheck="false" placeholder="ntfy://ntfy.sh/my-topic&#10;discord://webhook_id/webhook_token"></textarea>
     </label>
-    <p class="hint">Alerts always appear in-app. Add URLs to also send them to ntfy, Discord, Telegram, Gotify, Pushover, Slack, email and more:
+    <p class="hint">Alerts always appear in-app. Add URLs to also send them to ntfy, Telegram, Gotify, Pushover, Slack, email and more:
       <code>ntfy://ntfy.sh/topic</code> <code>tgram://bottoken/chatid</code> <code>mailtos://user:pass@gmail.com</code></p>
     <h3>Product search</h3>
     <label>SearXNG URL <input name="searxng_url" placeholder="http://searxng:8080" spellcheck="false"></label>
@@ -825,7 +827,7 @@ $("#settings-form").ai_provider.addEventListener("change", aiPlaceholders);
 $("#open-settings").addEventListener("click", async () => {
   try {
     const s = await api("/settings"), f = $("#settings-form");
-    for (const key of ["notify_urls", "searxng_url", "ai_provider", "ai_model", "ai_base_url"]) f[key].value = s[key];
+    for (const key of ["notify_urls", "discord_webhook", "searxng_url", "ai_provider", "ai_model", "ai_base_url"]) f[key].value = s[key];
     f.ai_api_key.value = "";
     f.ai_api_key.placeholder = s.ai_key_set ? "Saved — leave blank to keep" : "";
     aiPlaceholders();
@@ -836,7 +838,7 @@ $("#open-settings").addEventListener("click", async () => {
 async function saveSettings() {
   const f = $("#settings-form");
   applySettings(await api("/settings", "PUT", Object.fromEntries(
-    ["notify_urls", "searxng_url", "ai_provider", "ai_model", "ai_base_url", "ai_api_key"].map(k => [k, f[k].value]))));
+    ["notify_urls", "discord_webhook", "searxng_url", "ai_provider", "ai_model", "ai_base_url", "ai_api_key"].map(k => [k, f[k].value]))));
 }
 
 $("#settings-form").addEventListener("submit", e => {
@@ -845,7 +847,7 @@ $("#settings-form").addEventListener("submit", e => {
 });
 
 $("#test-notify").addEventListener("click", e => busy(e.target, "Sending…", async () => {
-  await saveSettings(); await api("/settings/test", "POST"); toast("Test notification sent");
+  await saveSettings(); const r = await api("/settings/test", "POST"); toast(`Test sent to ${r.sent.join(" and ")}`);
 }));
 
 // ---------- shell ----------

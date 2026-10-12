@@ -20,7 +20,7 @@ Open http://localhost:8080. Data lives in `./data/tracker.db` — back up that f
 - **Availability** — in stock, pre-order, back order, out of stock, discontinued. Out-of-stock sources don't count as the best price.
 - **Price history** — step chart per source, with lowest / highest / time-weighted average.
 - **Scheduling** — per-product check frequency from 5 minutes to 24 hours, or pause a product.
-- **Alerts** — target price, price drops (optionally only above a % threshold), back in stock. Shown in-app and sent via any [Apprise URL](https://github.com/caronc/apprise/wiki) (ntfy, Discord, Telegram, Gotify, Pushover, Slack, email, …).
+- **Alerts** — target price, price drops (optionally only above a % threshold), back in stock. Shown in-app, posted to Discord, and sent via any [Apprise URL](https://github.com/caronc/apprise/wiki) (ntfy, Telegram, Gotify, Pushover, Slack, email, …).
 - **Customisable dashboard** — products grouped by tag. Drag groups and products to reorder, drag a product to another group to re-tag it, collapse groups. **Customize** shows or hides the summary stats and the *Good to buy now*, *Recently dropped* and *Needs attention* sections.
 - **Product search** — with a SearXNG instance, type a product name instead of a URL, or find a product at other stores.
 - **AI-assisted scraping** (optional) — recover a price the rules miss, or have AI propose a store's rules.
@@ -41,6 +41,10 @@ If a site shows the wrong price or none, open **Stores → Edit** and set a stra
 | JSON path | Dot path into a JSON response, e.g. `product.variants.0.price` |
 
 Also per store: currency, fetch method (auto / HTTP / headless browser), cookies to send, and *treat a missing price as out of stock*. Use **Test** to try a config against a URL before saving.
+
+## Discord notifications
+
+In Discord, open the channel's settings → **Integrations → Webhooks → New Webhook → Copy Webhook URL**. Paste it under **Settings → Discord webhook URL** and click **Send test notification**. Price drops, target prices reached and back-in-stock alerts are then posted to that channel with the product image and a link to the cheapest store. Which alerts fire is set per product (target price, minimum drop %, back in stock).
 
 ## Product search (SearXNG)
 
