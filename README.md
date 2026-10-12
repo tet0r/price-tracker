@@ -50,3 +50,7 @@ Also per store: currency, fetch method (auto / HTTP / headless browser), cookies
 - Some sites (Amazon in particular) serve CAPTCHAs to automated requests; checks against them fail intermittently.
 - Prices are stored without a currency and shown in the store's currency. Mixing currencies in one product gives wrong comparisons.
 - Not included from PriceBuddy: multi-user accounts, AI-assisted scraping, unit pricing, drag-to-arrange dashboard, SearXNG search, browser extension, CLI/MCP.
+
+## License
+
+[MIT](LICENSE)
