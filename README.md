@@ -5,8 +5,10 @@ Self-hosted price tracker. Paste a product URL from any site; it records the pri
 ## Install
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
+
+This pulls the image published by GitHub Actions (`ghcr.io/tet0r/price-tracker`, amd64 and arm64). To build from source instead, run `docker compose up -d --build`. Update later with `docker compose pull && docker compose up -d`.
 
 Open http://localhost:8080. Data lives in `./data/tracker.db` — back up that folder.
 

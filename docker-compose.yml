@@ -1,5 +1,7 @@
 services:
   pricetracker:
+    # Pulls the published image; falls back to building from this folder
+    image: ghcr.io/tet0r/price-tracker:latest
     build: .
     container_name: pricetracker
     restart: unless-stopped
