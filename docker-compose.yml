@@ -25,7 +25,7 @@ services:
       # Set a password to require a login (HTTP basic auth). Empty = no login.
       AUTH_USERNAME: admin
       AUTH_PASSWORD: ""
-      # Ask GitHub twice a day whether a newer release exists, and alert when one does
+      # Ask GitHub every 5 minutes whether a newer release exists, and alert when one does
       UPDATE_CHECK: "true"
       # Optional. Both can also be set in the app under Settings.
       SEARXNG_URL: ""

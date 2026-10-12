@@ -4,6 +4,12 @@ All notable changes to Price Tracker are listed here, newest first. Version numb
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-12
+
+### Changed
+
+- The app now checks for a new release every 5 minutes instead of twice a day, and the update banner appears without reloading the page.
+
 ## [1.1.0] - 2026-10-12
 
 ### Added
@@ -59,6 +65,7 @@ First versioned release.
 - Saved secrets (webhooks, notification URLs, store cookies, AI key) are never sent back to the browser in full.
 - The saved AI key is cleared if the provider or its address changes.
 
-[Unreleased]: https://github.com/tet0r/price-tracker/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/tet0r/price-tracker/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/tet0r/price-tracker/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/tet0r/price-tracker/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/tet0r/price-tracker/releases/tag/v1.0.0

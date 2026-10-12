@@ -20,7 +20,7 @@ Open http://localhost:8080. Data lives in `./data/tracker.db` — back up that f
 docker compose pull && docker compose up -d
 ```
 
-The running version is shown at the bottom of the page. Twice a day the app asks GitHub whether a newer release exists; when one does you get a banner, an in-app alert, and a message on Discord / your Apprise services. Set `UPDATE_CHECK: "false"` to turn this off. To stay on a specific release, use an image tag such as `ghcr.io/tet0r/price-tracker:1.0.0` instead of `:latest`.
+The running version is shown at the bottom of the page. Every 5 minutes the app asks GitHub whether a newer release exists; when one does you get a banner within a few minutes, without reloading the page, plus an in-app alert, and a message on Discord / your Apprise services. Set `UPDATE_CHECK: "false"` to turn this off. To stay on a specific release, use an image tag such as `ghcr.io/tet0r/price-tracker:1.0.0` instead of `:latest`.
 
 Releases are cut by changing the number in the `VERSION` file: the first push to `main` with a new number publishes that image tag and a GitHub release. Changes are listed in [CHANGELOG.md](CHANGELOG.md); a version's section there becomes its release notes.
 
@@ -84,7 +84,7 @@ The page's HTML (scripts and styling removed) is sent to the provider you choose
 | `USE_BROWSER` | `true` | Headless Chromium fallback. `false` saves RAM but breaks JS-heavy sites |
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | `admin` / empty | Set a password to require a login (HTTP basic auth) |
 | `ALLOW_PRIVATE_URLS` | `false` | Allow product URLs on private addresses (your LAN, localhost). Picture downloads are always limited to public addresses |
-| `UPDATE_CHECK` | `true` | Check GitHub for a newer release twice a day. `false` makes no outside calls for this |
+| `UPDATE_CHECK` | `true` | Check GitHub for a newer release every 5 minutes. `false` makes no outside calls for this |
 | `SEARXNG_URL` | empty | SearXNG address, if not set in Settings |
 | `AI_API_KEY` | empty | AI provider key, if not set in Settings |
 

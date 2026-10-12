@@ -37,7 +37,8 @@ VERSION_FILE = Path(__file__).parent.parent / "VERSION"
 VERSION = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "dev"
 UPDATE_CHECK = os.environ.get("UPDATE_CHECK", "true").lower() in ("1", "true", "yes")
 UPDATE_REPO = os.environ.get("UPDATE_REPO", "tet0r/price-tracker")
-UPDATE_INTERVAL = 12 * 3600
+# 12 requests an hour, well inside GitHub's limit of 60 for anonymous callers
+UPDATE_INTERVAL = 5 * 60
 # Product photos are copied here so they still load when a shop blocks hotlinking
 IMAGE_DIR = Path(db.DATA_DIR) / "images"
 

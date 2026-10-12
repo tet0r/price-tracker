@@ -1054,7 +1054,12 @@ async function load() {
 
 route();
 api("/settings").then(applySettings).catch(e => toast(e.message)).then(load);
-setInterval(() => { if (!document.querySelector("dialog[open]") && !drag) load(); }, 60000);
+setInterval(() => {
+  if (document.querySelector("dialog[open]") || drag) return;
+  load();
+  // Picks up a newly found release without needing a reload
+  api("/settings").then(showVersion).catch(() => {});
+}, 60000);
 </script>
 </body>
 </html>
