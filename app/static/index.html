@@ -56,7 +56,21 @@
   .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px;
           font-size: 12.5px; color: var(--muted); }
   .tile b { display: block; font-size: 22px; color: var(--text); font-variant-numeric: tabular-nums; }
+  button.tile { text-align: left; white-space: normal; }
+  button.tile:hover, .smart .group-head:hover h2 { border-color: var(--muted); text-decoration: underline; }
+  .smart .group-head { cursor: pointer; }
+  #smart-list tr[data-id] { cursor: pointer; }
+  #smart-list tr[data-id]:hover td { background: var(--bg); }
+  #smart-list img { width: 40px; height: 40px; object-fit: contain; background: #fff; border-radius: 6px; vertical-align: middle; margin-right: 10px; }
+  #smart-list td:first-child { font-weight: 600; }
   .group, .smart { margin-bottom: 22px; border-radius: 12px; }
+  .viewbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .viewbar label { margin: 0 0 0 auto; display: flex; align-items: center; gap: 8px; }
+  .viewbar select { width: auto; margin: 0; padding: 5px 8px; }
+  .pager { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .pager button { min-width: 36px; padding: 6px 10px; }
+  .pager button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .pager span { align-self: center; color: var(--muted); }
   .group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .group-head h2 { margin: 0; font-size: 15px; }
   .group .group-head { cursor: grab; }
@@ -229,6 +243,12 @@
   <div class="actions"><span class="spacer"></span><button data-close>Close</button></div>
 </dialog>
 
+<dialog id="smart">
+  <h2 id="smart-title"></h2>
+  <div id="smart-list"></div>
+  <div class="actions"><span class="spacer"></span><button data-close>Close</button></div>
+</dialog>
+
 <dialog id="customize">
   <form id="customize-form">
     <h2>Customize dashboard</h2>
@@ -291,8 +311,9 @@ const INTERVALS = [[5, "5 minutes"], [15, "15 minutes"], [30, "30 minutes"], [60
 const FIELDS = ["title", "price", "image", "availability"];
 const SMART = [["good", "What's good to buy now"], ["dropped", "Recently dropped"], ["attention", "Needs attention"]];
 const AI_MODELS = { anthropic: "claude-opus-5-5", openai: "e.g. gpt-5-mini", gemini: "e.g. gemini-2.5-flash", ollama: "e.g. llama3.1" };
-let products = [], stores = [], openId = null, storeId = null, drag = null;
-let features = { search: false, ai: false }, dash = { order: [], collapsed: [], hidden: [] };
+const PAGE_SIZES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+let products = [], stores = [], openId = null, storeId = null, drag = null, page = 1;
+let features = { search: false, ai: false }, dash = { order: [], collapsed: [], hidden: [], per_page: 10 };
 
 async function api(path, method = "GET", body) {
   const res = await fetch("/api" + path, {
@@ -431,6 +452,56 @@ function thumb(p) {
   return `<div class="thumb"><img src="${esc(p.image)}" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('none'); this.remove()"></div>`;
 }
 
+// Pop-in for a smart section: one row per product with the facts that put it there
+const SMART_VIEWS = {
+  good: {
+    empty: "Nothing is at its target or lowest price right now.",
+    head: ["Product", "Price", "Why", "Store"],
+    row: (p, d) => [
+      money(d.price, d.currency) + perUnit(p, d),
+      p.target_price != null && d.price <= p.target_price
+        ? `At or below your target of ${money(p.target_price, d.currency)}`
+        : `Lowest tracked price (average ${money(d.avg, d.currency)}, highest ${money(d.max, d.currency)})`,
+      esc(d.best.store_name),
+    ],
+  },
+  dropped: {
+    empty: "No price drops in the last 7 days.",
+    head: ["Product", "Was", "Now", "Change", "When"],
+    row: (p, d) => [
+      money(d.series.at(-2)[1], d.currency), money(d.price, d.currency) + perUnit(p, d),
+      `<span class="badge down">▼ ${Math.abs(d.pct).toFixed(1)}%</span>`, ago(d.series.at(-1)[0]),
+    ],
+  },
+  attention: {
+    empty: "Every product checked without problems.",
+    head: ["Product", "Problem"],
+    row: p => [p.urls.length
+      ? p.urls.filter(u => u.last_error).map(u => `<div class="error" style="margin-bottom:4px"><b>${esc(u.store_name)}</b>: ${esc(u.last_error)}</div>`).join("")
+      : "No store URLs. Open it to add one."],
+  },
+};
+
+function openSmart(key) {
+  const view = SMART_VIEWS[key], title = SMART.find(s => s[0] === key)[1];
+  const rows = products.map(p => [p, derive(p)]).filter(([, d]) => d[key]);
+  $("#smart-title").textContent = `${title} (${rows.length})`;
+  $("#smart-list").innerHTML = rows.length ? `<div class="scroll"><table>
+    <tr>${view.head.map(h => `<th>${h}</th>`).join("")}</tr>
+    ${rows.map(([p, d]) => `<tr data-id="${p.id}" tabindex="0" title="Open product">
+      <td>${p.image ? `<img src="${esc(p.image)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}${esc(p.name || p.urls[0]?.url || "Untitled")}</td>
+      ${view.row(p, d).map(cell => `<td>${cell}</td>`).join("")}</tr>`).join("")}
+    </table></div><p class="hint" style="margin:10px 0 0">Click a product to open it.</p>` : `<p class="sub">${view.empty}</p>`;
+  $("#smart").showModal();
+}
+
+function smartRow(e) {
+  const row = e.target.closest("tr[data-id]");
+  if (!row || (e.type === "keydown" && e.key !== "Enter")) return;
+  $("#smart").close();
+  openId = +row.dataset.id; renderProduct(); $("#product").showModal();
+}
+
 // A group is a tag; "" is the group for untagged products
 const inGroup = (p, key) => key === "" ? !p.tags.length : p.tags.includes(key);
 
@@ -452,26 +523,52 @@ function render() {
   let html = "";
   if (shown("stats")) {
     const tiles = [["Products", products.length], ["Sources", products.reduce((n, p) => n + p.urls.length, 0)],
-      ["Good to buy", matching("good").length], ["Dropped this week", matching("dropped").length],
-      ["Need attention", matching("attention").length]];
-    html += `<div class="tiles">${tiles.map(([label, n]) => `<div class="tile"><b>${n}</b>${label}</div>`).join("")}</div>`;
+      ["Good to buy", matching("good").length, "good"], ["Dropped this week", matching("dropped").length, "dropped"],
+      ["Need attention", matching("attention").length, "attention"]];
+    html += `<div class="tiles">${tiles.map(([label, n, key]) => key
+      ? `<button class="tile" data-smart="${key}" title="Show details"><b>${n}</b>${label}</button>`
+      : `<div class="tile"><b>${n}</b>${label}</div>`).join("")}</div>`;
   }
   for (const [key, title] of SMART) {
     const list = matching(key);
-    if (list.length && shown(key)) html += `<section class="smart"><div class="group-head"><h2>${title}</h2><span class="sub">${list.length}</span></div>
+    if (list.length && shown(key)) html += `<section class="smart"><div class="group-head" data-smart="${key}" role="button" tabindex="0" title="Show details"><h2>${title}</h2><span class="sub">${list.length} · details</span></div>
       <div class="grid">${list.map(p => card(p, false)).join("")}</div></section>`;
   }
-  const keys = groupKeys();
+  // Pages run through the groups in order. Collapsed groups take no room and keep their header on every page.
+  const keys = groupKeys(), per = PAGE_SIZES.includes(dash.per_page) ? dash.per_page : 10;
+  const entries = keys.filter(key => !dash.collapsed.includes(key))
+    .flatMap(key => products.filter(p => inGroup(p, key)).map(p => [key, p]));
+  const pages = Math.max(1, Math.ceil(entries.length / per));
+  page = Math.min(Math.max(page, 1), pages);
+  const first = (page - 1) * per, visible = entries.slice(first, first + per);
+  html += `<div class="viewbar"><span class="sub">${entries.length ? `Showing ${first + 1}–${first + visible.length} of ${entries.length}` : ""}</span>
+    <label>View <select id="per-page" aria-label="Products per page">${PAGE_SIZES.map(n => `<option ${n === per ? "selected" : ""}>${n}</option>`).join("")}</select></label></div>`;
   html += keys.map(key => {
-    const list = products.filter(p => inGroup(p, key)), collapsed = dash.collapsed.includes(key);
+    const total = products.filter(p => inGroup(p, key)).length, collapsed = dash.collapsed.includes(key);
+    const list = visible.filter(entry => entry[0] === key).map(entry => entry[1]);
+    if (!collapsed && !list.length) return "";
     const title = key || (keys.length > 1 ? "Untagged" : "All products");
     return `<section class="group" data-group="${esc(key)}">
-      <div class="group-head" draggable="true" title="Drag to reorder groups"><span class="grip">⠿</span><h2>${esc(title)}</h2><span class="sub">${list.length}</span>
+      <div class="group-head" draggable="true" title="Drag to reorder groups"><span class="grip">⠿</span><h2>${esc(title)}</h2><span class="sub">${total}</span>
         <span class="spacer"></span><button class="small" data-collapse title="${collapsed ? "Expand" : "Collapse"}">${collapsed ? "▸" : "▾"}</button></div>
       ${collapsed ? "" : `<div class="grid">${list.map(p => card(p, true)).join("")}</div>`}
     </section>`;
   }).join("");
+  if (pages > 1) html += pager(pages);
   $("#board").innerHTML = html;
+}
+
+// Numbered page buttons: always the first and last, plus those around the current page
+function pager(pages) {
+  const wanted = new Set([1, pages, page - 1, page, page + 1].filter(n => n >= 1 && n <= pages));
+  let out = `<button data-page="${page - 1}" ${page === 1 ? "disabled" : ""} aria-label="Previous page">‹</button>`, last = 0;
+  for (const n of [...wanted].sort((a, b) => a - b)) {
+    if (n - last > 1) out += `<span>…</span>`;
+    out += `<button data-page="${n}" class="${n === page ? "on" : ""}" ${n === page ? `aria-current="page"` : ""}>${n}</button>`;
+    last = n;
+  }
+  out += `<button data-page="${page + 1}" ${page === pages ? "disabled" : ""} aria-label="Next page">›</button>`;
+  return `<nav class="pager" aria-label="Pages">${out}</nav>`;
 }
 
 const saveDash = () => api("/dashboard", "PUT", dash).catch(e => toast(e.message));
@@ -517,7 +614,17 @@ $("#search-results").addEventListener("click", e => {
     .then(() => { if (btn.dataset.done) { btn.textContent = "Tracked"; btn.disabled = true; } });
 });
 
+$("#board").addEventListener("change", e => {
+  if (e.target.id !== "per-page") return;
+  dash.per_page = +e.target.value; page = 1;
+  render(); saveDash();
+});
+
 $("#board").addEventListener("click", e => {
+  const turn = e.target.closest("[data-page]");
+  if (turn) { page = +turn.dataset.page; render(); return window.scrollTo({ top: 0 }); }
+  const smart = e.target.closest("[data-smart]");
+  if (smart) return openSmart(smart.dataset.smart);
   const toggle = e.target.closest("[data-collapse]");
   if (toggle) {
     const key = toggle.closest(".group").dataset.group;
@@ -526,13 +633,20 @@ $("#board").addEventListener("click", e => {
   }
   openCard(e);
 });
-$("#board").addEventListener("keydown", e => { if (e.key === "Enter") openCard(e); });
+$("#board").addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  const smart = e.target.closest(".group-head[data-smart]");
+  if (smart) openSmart(smart.dataset.smart); else openCard(e);
+});
 
 function openCard(e) {
   const el = e.target.closest(".card");
   if (!el) return;
   openId = +el.dataset.id; renderProduct(); $("#product").showModal();
 }
+
+$("#smart-list").addEventListener("click", smartRow);
+$("#smart-list").addEventListener("keydown", smartRow);
 
 // ---------- drag to arrange ----------
 
@@ -864,7 +978,7 @@ function showVersion(s) {
 function applySettings(s) {
   showVersion(s);
   features = s.features;
-  dash = { order: [], collapsed: [], hidden: [], ...s.dashboard };
+  dash = { order: [], collapsed: [], hidden: [], per_page: 10, ...s.dashboard };
   $("#url").placeholder = features.search ? "Paste a product URL, or type a product name to search…" : "Paste a product URL from any site…";
 }
 

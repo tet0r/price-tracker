@@ -34,7 +34,7 @@ Releases are cut by changing the number in the `VERSION` file: the first push to
 - **Price history** — step chart per source, with lowest / highest / time-weighted average.
 - **Scheduling** — per-product check frequency from 5 minutes to 24 hours, or pause a product.
 - **Alerts** — target price, price drops (optionally only above a % threshold), back in stock. Shown in-app, posted to Discord, and sent via any [Apprise URL](https://github.com/caronc/apprise/wiki) (ntfy, Telegram, Gotify, Pushover, Slack, email, …).
-- **Customisable dashboard** — products grouped by tag. Drag groups and products to reorder, drag a product to another group to re-tag it, collapse groups. **Customize** shows or hides the summary stats and the *Good to buy now*, *Recently dropped* and *Needs attention* sections.
+- **Customisable dashboard** — products grouped by tag. Drag groups and products to reorder, drag a product to another group to re-tag it, collapse groups. A **View** dropdown sets how many products show per page (10–100), with numbered pages beyond that. **Customize** shows or hides the summary stats and the *Good to buy now*, *Recently dropped* and *Needs attention* sections.
 - **Product search** — with a SearXNG instance, type a product name instead of a URL, or find a product at other stores.
 - **AI-assisted scraping** (optional) — recover a price the rules miss, or have AI propose a store's rules.
 - **JavaScript sites** — falls back to headless Chromium when a plain HTTP request is blocked or finds no price.

@@ -4,6 +4,13 @@ All notable changes to Price Tracker are listed here, newest first. Version numb
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-12
+
+### Added
+
+- A "View" dropdown on the dashboard to show 10 to 100 products per page, with numbered pages when there are more.
+- The "Good to buy", "Dropped this week" and "Need attention" tiles and section titles open a pop-in listing the products involved and why.
+
 ## [1.0.0] - 2026-10-12
 
 First versioned release.
@@ -52,5 +59,6 @@ First versioned release.
 - Saved secrets (webhooks, notification URLs, store cookies, AI key) are never sent back to the browser in full.
 - The saved AI key is cleared if the provider or its address changes.
 
-[Unreleased]: https://github.com/tet0r/price-tracker/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/tet0r/price-tracker/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/tet0r/price-tracker/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/tet0r/price-tracker/releases/tag/v1.0.0
