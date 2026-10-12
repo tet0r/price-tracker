@@ -5,4 +5,4 @@ beautifulsoup4>=4.12,<5
 lxml>=5,<7
 apprise>=1.8,<2
 anthropic>=1,<2
-playwright==1.49.1
+playwright==1.63.0

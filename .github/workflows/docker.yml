@@ -3,7 +3,6 @@ name: Docker image
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -11,10 +10,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write  # to create the release
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The VERSION file is the release number. A release is cut the first time
+      # a given number reaches main; later pushes with the same number only refresh :latest.
+      - name: Read version
+        id: version
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "VERSION must look like 1.2.3"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "minor=${version%.*}" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then echo "new=false" >> "$GITHUB_OUTPUT"; else echo "new=true" >> "$GITHUB_OUTPUT"; fi
 
       - uses: docker/setup-qemu-action@v3
 
@@ -28,7 +40,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # main -> :latest and :main, tag v1.2.3 -> :1.2.3 and :1.2, every build -> :sha-<commit>
+      # main -> :latest and :main, a new VERSION -> :1.2.3 and :1.2, every build -> :sha-<commit>
       - name: Image tags
         id: meta
         uses: docker/metadata-action@v5
@@ -37,9 +49,44 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ github.ref == 'refs/heads/main' && steps.version.outputs.new == 'true' }}
+            type=raw,value=${{ steps.version.outputs.minor }},enable=${{ github.ref == 'refs/heads/main' && steps.version.outputs.new == 'true' }}
             type=sha
+
+      - name: Build image for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: price-tracker:test
+          cache-from: type=gha
+
+      # Starts the container the way a user would and checks it serves, runs
+      # unprivileged, can drive the headless browser, and refuses private addresses
+      - name: Smoke test
+        run: |
+          mkdir smoke-data
+          docker run -d --name pt -p 8000:8000 -v "$PWD/smoke-data:/data" price-tracker:test
+          for i in $(seq 1 30); do curl -fs http://localhost:8000/api/products > /dev/null && break; sleep 1; done
+          curl -fs http://localhost:8000/api/products
+          uid=$(docker exec pt stat -c %u /proc/1)
+          echo "app runs as uid $uid"; test "$uid" != "0"
+          docker exec -u pwuser pt python -c "
+          import asyncio
+          from app import netguard
+          from app.fetch import fetch_browser
+          assert 'Example Domain' in asyncio.run(fetch_browser('https://example.com/'))
+          try:
+              asyncio.run(fetch_browser('http://127.0.0.1:8000/'))
+          except netguard.BlockedURL:
+              print('browser ok, private address refused')
+          else:
+              raise SystemExit('private address was not refused')
+          "
+
+      - name: Container logs
+        if: failure()
+        run: docker logs pt
 
       # Pull requests build only, to check the Dockerfile still works
       - name: Build and push
@@ -52,3 +99,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Tags the commit and publishes release notes; running instances see it and offer the update
+      - name: Create release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.version.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "v${{ steps.version.outputs.version }}" --target "$GITHUB_SHA" --generate-notes

@@ -3,7 +3,7 @@ import os
 
 import httpx
 
-from . import ai
+from . import ai, netguard
 from .extract import UNAVAILABLE, Extracted, extract
 
 USE_BROWSER = os.environ.get("USE_BROWSER", "true").lower() in ("1", "true", "yes")
@@ -23,6 +23,7 @@ IMAGE_TYPES = {
     "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif",
 }
 MAX_IMAGE_BYTES = 5_000_000
+MAX_PAGE_BYTES = 15_000_000
 
 # One Chromium at a time keeps memory use predictable
 _browser_slot = asyncio.Semaphore(1)
@@ -43,19 +44,30 @@ async def fetch_http(url: str, cookies: str = "") -> str:
     headers = dict(HEADERS)
     if cookies.strip():
         headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in _cookie_pairs(cookies))
+    hooks = {} if netguard.ALLOW_PRIVATE else {"request": [netguard.httpx_guard]}
     async with httpx.AsyncClient(
-        headers=headers, follow_redirects=True, timeout=25, http2=True
+        headers=headers, follow_redirects=True, timeout=25, http2=True, event_hooks=hooks
     ) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.text
+        async with client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            data = b""
+            async for chunk in resp.aiter_bytes():
+                data += chunk
+                if len(data) > MAX_PAGE_BYTES:
+                    raise ValueError("page is larger than 15 MB")
+            return data.decode(resp.encoding or "utf-8", errors="replace")
 
 
 async def fetch_image(url: str, referer: str) -> tuple[bytes, str] | None:
-    """Download a product photo. Returns (bytes, file extension), or None if it isn't a usable image."""
+    """Download a product photo. Returns (bytes, file extension), or None if it isn't a usable image.
+
+    The URL is chosen by the scraped page, so it must be a public address even
+    when private product URLs are allowed.
+    """
     headers = {"User-Agent": USER_AGENT, "Accept": "image/avif,image/webp,image/*,*/*;q=0.8", "Referer": referer}
+    hooks = {"request": [netguard.httpx_guard]}
     try:
-        async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=20) as client:
+        async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=20, event_hooks=hooks) as client:
             async with client.stream("GET", url) as resp:
                 kind = resp.headers.get("content-type", "").split(";")[0].strip().lower()
                 if resp.status_code != 200 or kind not in IMAGE_TYPES:
@@ -65,14 +77,24 @@ async def fetch_image(url: str, referer: str) -> tuple[bytes, str] | None:
                     data += chunk
                     if len(data) > MAX_IMAGE_BYTES:
                         return None
-    except httpx.HTTPError:
+    except (httpx.HTTPError, netguard.BlockedURL):
         return None
     return (data, IMAGE_TYPES[kind]) if data else None
+
+
+async def _block_private(route) -> None:
+    """Playwright route handler: stop the page, its redirects and its scripts reaching private addresses."""
+    if await netguard.is_public(route.request.url):
+        await route.continue_()
+    else:
+        await route.abort("blockedbyclient")
 
 
 async def fetch_browser(url: str, cookies: str = "") -> str:
     from playwright.async_api import async_playwright
 
+    if not netguard.ALLOW_PRIVATE:
+        await netguard.require_public(url)
     async with _browser_slot, async_playwright() as pw:
         browser = await pw.chromium.launch(
             args=[
@@ -89,6 +111,8 @@ async def fetch_browser(url: str, cookies: str = "") -> str:
                 await context.add_cookies(
                     [{"name": k, "value": v, "url": url} for k, v in _cookie_pairs(cookies)]
                 )
+            if not netguard.ALLOW_PRIVATE:
+                await context.route("**/*", _block_private)
             page = await context.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
             try:

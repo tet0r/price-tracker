@@ -136,6 +136,13 @@
   .note { border-bottom: 1px solid var(--line); padding: 9px 0; }
   .note.unread b::before { content: "● "; color: var(--accent); }
   .note div { font-size: 13px; color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; }
+  #update { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--down-bg); color: var(--down);
+            border-radius: 10px; padding: 9px 14px; margin-bottom: 14px; font-size: 14px; }
+  #update a { color: inherit; font-weight: 600; }
+  #update code { background: transparent; color: inherit; padding: 0; }
+  #update button { margin-left: auto; background: transparent; border-color: currentColor; color: inherit; }
+  footer { margin-top: 40px; text-align: center; font-size: 12.5px; color: var(--muted); }
+  footer a { color: inherit; }
   #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text);
            color: var(--bg); padding: 10px 16px; border-radius: 10px; max-width: 90vw; display: none; z-index: 10; }
   [hidden] { display: none !important; }
@@ -151,6 +158,8 @@
     <button id="open-alerts">Alerts<span class="count" id="unread" hidden></span></button>
     <button id="open-settings">Settings</button>
   </header>
+
+  <div id="update" hidden></div>
 
   <section id="dashboard">
     <form id="add" class="bar">
@@ -168,6 +177,7 @@
     </div>
     <div class="panel" id="store-list"></div>
   </section>
+  <footer id="footer"></footer>
 </main>
 
 <dialog id="product"></dialog>
@@ -764,7 +774,7 @@ function storeBody() {
 function testBody() {
   const f = $("#store-form"), url = f.test_url.value.trim();
   if (!url) { toast("Enter a product URL from this store first"); return null; }
-  return { ...storeBody(), name: f.elements.name.value || "test", url };
+  return { ...storeBody(), name: f.elements.name.value || "test", url, id: storeId };
 }
 
 function showExtracted(r, note = "") {
@@ -833,7 +843,26 @@ $("#open-alerts").addEventListener("click", async () => {
   if (alerts.some(a => !a.read)) { await api("/notifications/read", "POST").catch(() => {}); loadAlerts(); }
 });
 
+// Shows the running version, and a banner when a newer release exists (until dismissed for that version)
+function showVersion(s) {
+  $("#footer").innerHTML = `Price Tracker ${esc(s.version === "dev" ? "(development build)" : "v" + s.version)}`
+    + (s.update ? ` · <a href="${esc(s.update.url)}" target="_blank" rel="noopener noreferrer">v${esc(s.update.version)} available</a>` : "");
+  let dismissed = null;
+  try { dismissed = localStorage.getItem("update-dismissed"); } catch {}
+  const banner = $("#update");
+  banner.hidden = !s.update || dismissed === s.update.version;
+  if (banner.hidden) return;
+  banner.innerHTML = `<span><b>Version ${esc(s.update.version)} is available</b> (you have ${esc(s.version)}).
+    <a href="${esc(s.update.url)}" target="_blank" rel="noopener noreferrer">What's new</a> ·
+    update with <code>docker compose pull && docker compose up -d</code></span><button class="small">Dismiss</button>`;
+  banner.querySelector("button").onclick = () => {
+    try { localStorage.setItem("update-dismissed", s.update.version); } catch {}
+    banner.hidden = true;
+  };
+}
+
 function applySettings(s) {
+  showVersion(s);
   features = s.features;
   dash = { order: [], collapsed: [], hidden: [], ...s.dashboard };
   $("#url").placeholder = features.search ? "Paste a product URL, or type a product name to search…" : "Paste a product URL from any site…";
@@ -852,6 +881,7 @@ $("#open-settings").addEventListener("click", async () => {
     for (const key of ["notify_urls", "discord_webhook", "searxng_url", "ai_provider", "ai_model", "ai_base_url"]) f[key].value = s[key];
     f.ai_api_key.value = "";
     f.ai_api_key.placeholder = s.ai_key_set ? "Saved — leave blank to keep" : "";
+    f.dataset.ai = s.ai_provider + "|" + s.ai_base_url;
     aiPlaceholders();
     $("#settings").showModal();
   } catch (err) { toast(err.message); }
@@ -859,6 +889,9 @@ $("#open-settings").addEventListener("click", async () => {
 
 async function saveSettings() {
   const f = $("#settings-form");
+  if (f.ai_api_key.placeholder && !f.ai_api_key.value && f.dataset.ai !== f.ai_provider.value + "|" + f.ai_base_url.value.trim()
+      && f.ai_provider.value && f.ai_provider.value !== "ollama")
+    throw new Error("Re-enter the API key: it isn't carried over when the provider or base URL changes.");
   applySettings(await api("/settings", "PUT", Object.fromEntries(
     ["notify_urls", "discord_webhook", "searxng_url", "ai_provider", "ai_model", "ai_base_url", "ai_api_key"].map(k => [k, f[k].value]))));
 }

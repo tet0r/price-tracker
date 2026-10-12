@@ -84,11 +84,15 @@ class AIError(Exception):
 def config() -> dict:
     provider = db.get_setting("ai_provider")
     provider = provider if provider in PROVIDERS else ""
+    custom_url = db.get_setting("ai_base_url")
+    # The key from the environment only ever goes to a provider's own address;
+    # a custom base URL needs a key entered alongside it in Settings.
+    env_key = "" if custom_url else os.environ.get("AI_API_KEY", "")
     return {
         "provider": provider,
-        "api_key": db.get_setting("ai_api_key") or os.environ.get("AI_API_KEY", ""),
+        "api_key": db.get_setting("ai_api_key") or env_key,
         "model": db.get_setting("ai_model") or DEFAULT_MODEL.get(provider, ""),
-        "base_url": (db.get_setting("ai_base_url") or OPENAI_COMPATIBLE.get(provider, "")).rstrip("/"),
+        "base_url": (custom_url or OPENAI_COMPATIBLE.get(provider, "")).rstrip("/"),
     }
 
 

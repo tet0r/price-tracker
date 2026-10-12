@@ -14,6 +14,16 @@ This pulls the image published by GitHub Actions (`ghcr.io/tet0r/price-tracker`,
 
 Open http://localhost:8080. Data lives in `./data/tracker.db` — back up that folder.
 
+## Updating
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+The running version is shown at the bottom of the page. Twice a day the app asks GitHub whether a newer release exists; when one does you get a banner, an in-app alert, and a message on Discord / your Apprise services. Set `UPDATE_CHECK: "false"` to turn this off. To stay on a specific release, use an image tag such as `ghcr.io/tet0r/price-tracker:1.0.0` instead of `:latest`.
+
+Releases are cut by changing the number in the `VERSION` file: the first push to `main` with a new number publishes that image tag and a GitHub release.
+
 ## Features
 
 - **Any store** — paste a URL and the price, title, image and availability are auto-detected. A *store* (per-domain scraping config) is created automatically.
@@ -73,12 +83,15 @@ The page's HTML (scripts and styling removed) is sent to the provider you choose
 | `CHECK_INTERVAL_MINUTES` | `360` | Default frequency for new products |
 | `USE_BROWSER` | `true` | Headless Chromium fallback. `false` saves RAM but breaks JS-heavy sites |
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | `admin` / empty | Set a password to require a login (HTTP basic auth) |
+| `ALLOW_PRIVATE_URLS` | `false` | Allow product URLs on private addresses (your LAN, localhost). Picture downloads are always limited to public addresses |
+| `UPDATE_CHECK` | `true` | Check GitHub for a newer release twice a day. `false` makes no outside calls for this |
 | `SEARXNG_URL` | empty | SearXNG address, if not set in Settings |
 | `AI_API_KEY` | empty | AI provider key, if not set in Settings |
 
 ## Notes
 
-- With no `AUTH_PASSWORD` there is no login. Keep it on your LAN, or set one and use HTTPS via a reverse proxy.
+- With no `AUTH_PASSWORD` there is no login, and anyone who can reach the port has full control. Set one, and use HTTPS via a reverse proxy if it's reachable from outside your network.
+- The app runs as an unprivileged user inside the container and refuses to fetch private network addresses unless `ALLOW_PRIVATE_URLS` is on. Saved secrets (webhooks, notification URLs, store cookies, AI key) are never sent back to the browser in full.
 - Some sites (Amazon in particular) serve CAPTCHAs to automated requests; checks against them fail intermittently.
 - Prices are stored without a currency and shown in the store's currency. Mixing currencies in one product gives wrong comparisons.
 - With unit pricing in use, a product's price, target and alerts are all per unit.

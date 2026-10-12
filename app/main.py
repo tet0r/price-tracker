@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from . import ai, db
 from .extract import UNAVAILABLE
-from .fetch import ScrapeError, fetch_body, fetch_image, scrape
+from .fetch import ScrapeError, _cookie_pairs, fetch_body, fetch_image, scrape
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("pricetracker")
@@ -31,6 +31,13 @@ AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "admin")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "")
 STATIC = Path(__file__).parent / "static"
+# The release this build is, from the VERSION file at the repo root. Bumping
+# that file on main publishes a new release.
+VERSION_FILE = Path(__file__).parent.parent / "VERSION"
+VERSION = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "dev"
+UPDATE_CHECK = os.environ.get("UPDATE_CHECK", "true").lower() in ("1", "true", "yes")
+UPDATE_REPO = os.environ.get("UPDATE_REPO", "tet0r/price-tracker")
+UPDATE_INTERVAL = 12 * 3600
 # Product photos are copied here so they still load when a shop blocks hotlinking
 IMAGE_DIR = Path(db.DATA_DIR) / "images"
 
@@ -63,6 +70,42 @@ def load_store(row: dict) -> dict:
     row["missing_price_oos"] = bool(row["missing_price_oos"])
     row["ai_extract"] = bool(row.get("ai_extract"))
     return row
+
+
+# Secrets are never sent to the browser in full. The UI gets a masked form and
+# sends it back untouched when the user hasn't edited it.
+MASK = "••••"
+
+
+def mask_url(value: str) -> str:
+    """scheme://••••tail — enough to recognise an entry without revealing it."""
+    scheme, sep, rest = value.partition("://")
+    return f"{scheme}{sep}{MASK}{rest[-3:]}" if sep else MASK
+
+
+def mask_lines(value: str) -> str:
+    return "\n".join(mask_url(line.strip()) for line in value.splitlines() if line.strip())
+
+
+def mask_cookies(value: str) -> str:
+    return "; ".join(f"{name}={MASK}" for name, _ in _cookie_pairs(value))
+
+
+def unmask_lines(submitted: str, stored: str) -> str:
+    """Swap any still-masked line back for the stored secret it stands for."""
+    originals = [line.strip() for line in stored.splitlines() if line.strip()]
+    out = []
+    for line in (l.strip() for l in submitted.splitlines()):
+        match = next((o for o in originals if mask_url(o) == line), None)
+        if match:
+            originals.remove(match)
+        if line and (match or MASK not in line):
+            out.append(match or line)
+    return "\n".join(out)
+
+
+def public_store(store: dict) -> dict:
+    return store | {"cookies": mask_cookies(store["cookies"])}
 
 
 def get_store(store_id: int) -> dict:
@@ -205,13 +248,15 @@ async def send_discord(title: str, body: str, link: str = "", image: str = "", k
     return True
 
 
-async def notify(product: dict, title: str, body: str, link: str = "", kind: str = "drop") -> None:
+async def notify(product: dict | None, title: str, body: str, link: str = "", kind: str = "drop") -> None:
+    """Record an in-app alert and send it to Discord and Apprise. `product` is None for app-level alerts."""
     db.execute(
         "INSERT INTO notifications (product_id, title, body, created_at) VALUES (?, ?, ?, ?)",
-        (product["id"], title, f"{body}\n{link}" if link else body, int(time.time())),
+        (product and product["id"], title, f"{body}\n{link}" if link else body, int(time.time())),
     )
+    image = (product and product["image"]) or ""
     for send in (
-        lambda: send_discord(title, body, link, product["image"] or "", kind),
+        lambda: send_discord(title, body, link, image, kind),
         lambda: send_external(title, f"{body}\n{link}" if link else body),
     ):
         try:
@@ -306,15 +351,65 @@ async def scheduler() -> None:
         await asyncio.sleep(60)
 
 
+# ---------- updates ----------
+
+def version_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(n) for n in re.findall(r"\d+", version)[:3])
+
+
+def available_update() -> dict | None:
+    """The newer release found by the last check, if there is one."""
+    latest = db.get_setting("latest_version")
+    if not UPDATE_CHECK or VERSION == "dev" or not latest or version_tuple(latest) <= version_tuple(VERSION):
+        return None
+    return {"version": latest, "url": db.get_setting("latest_url")}
+
+
+async def check_for_update() -> None:
+    """Ask GitHub for the latest release and alert once per new version."""
+    async with httpx.AsyncClient(timeout=15, headers={"Accept": "application/vnd.github+json"}) as client:
+        resp = await client.get(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest")
+    if resp.status_code != 200:
+        return
+    release = resp.json()
+    latest, url = str(release.get("tag_name", "")).lstrip("v"), str(release.get("html_url", ""))
+    if not version_tuple(latest):
+        return
+    db.set_setting("latest_version", latest)
+    db.set_setting("latest_url", url if url.startswith("https://github.com/") else "")
+    update = available_update()
+    if update and db.get_setting("update_notified") != latest:
+        db.set_setting("update_notified", latest)
+        await notify(
+            None, f"Price Tracker {latest} is available",
+            f"You are running {VERSION}. Update with: docker compose pull && docker compose up -d",
+            update["url"], "target",
+        )
+
+
+async def update_checker() -> None:
+    await asyncio.sleep(30)
+    while True:
+        try:
+            await check_for_update()
+        except Exception:
+            log.exception("update check failed")
+        await asyncio.sleep(UPDATE_INTERVAL)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init()
-    task = asyncio.create_task(scheduler())
+    log.info("Price Tracker %s", VERSION)
+    tasks = [asyncio.create_task(scheduler())]
+    if UPDATE_CHECK and VERSION != "dev":
+        tasks.append(asyncio.create_task(update_checker()))
     yield
-    task.cancel()
+    for task in tasks:
+        task.cancel()
 
 
-app = FastAPI(title="Price Tracker", lifespan=lifespan)
+app = FastAPI(title="Price Tracker", version=VERSION, lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -331,7 +426,11 @@ async def basic_auth(request: Request, call_next):
                 pass
         if not ok:
             return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Price Tracker"'})
-    return await call_next(request)
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 # ---------- products ----------
@@ -471,16 +570,26 @@ class StoreIn(BaseModel):
 
 class StoreTest(StoreIn):
     url: str
+    # The saved store being edited, so its masked cookies can be filled back in
+    id: int | None = None
 
 
-def store_columns(body: StoreIn) -> dict:
+def store_columns(body: StoreIn, store_id: int | None = None) -> dict:
     domains = [d.strip().lower().removeprefix("www.") for d in body.domains if d.strip()]
+    cookies = body.cookies.strip()
+    if store_id is not None and MASK in cookies:
+        saved = get_store(store_id)["cookies"]
+        if cookies != mask_cookies(saved):
+            raise HTTPException(400, "Re-enter the cookies in full to change them")
+        cookies = saved
+    elif MASK in cookies:
+        raise HTTPException(400, "Enter the cookies in full")
     return {
         "name": body.name.strip(),
         "domains": json.dumps(domains),
         "currency": (body.currency or "").strip().upper() or None,
         "service": body.service,
-        "cookies": body.cookies.strip(),
+        "cookies": cookies,
         "strategies": json.dumps({k: v.model_dump() for k, v in body.strategies.items()}),
         "missing_price_oos": int(body.missing_price_oos),
         "ai_extract": int(body.ai_extract),
@@ -493,7 +602,7 @@ def list_stores():
         "SELECT s.*, (SELECT COUNT(*) FROM urls WHERE store_id = s.id) AS url_count "
         "FROM stores s ORDER BY s.name COLLATE NOCASE"
     )
-    return [load_store(r) for r in rows]
+    return [public_store(load_store(r)) for r in rows]
 
 
 @app.post("/api/stores", status_code=201)
@@ -503,18 +612,18 @@ def create_store(body: StoreIn):
         f"INSERT INTO stores ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
         tuple(cols.values()),
     )
-    return get_store(store_id)
+    return public_store(get_store(store_id))
 
 
 @app.put("/api/stores/{store_id}")
 def update_store(store_id: int, body: StoreIn):
     get_store(store_id)
-    cols = store_columns(body)
+    cols = store_columns(body, store_id)
     db.execute(
         f"UPDATE stores SET {', '.join(f'{k} = ?' for k in cols)}, last_method = NULL WHERE id = ?",
         (*cols.values(), store_id),
     )
-    return get_store(store_id)
+    return public_store(get_store(store_id))
 
 
 @app.delete("/api/stores/{store_id}", status_code=204)
@@ -528,7 +637,7 @@ def delete_store(store_id: int):
 @app.post("/api/stores/test")
 async def test_store(body: StoreTest):
     """Try a store config (saved or not) against a product URL and show what it extracts."""
-    store = load_store(store_columns(body))
+    store = load_store(store_columns(body, body.id))
     try:
         found, method = await scrape(normalize_url(body.url), store)
     except ScrapeError as e:
@@ -543,7 +652,7 @@ async def test_store(body: StoreTest):
 async def suggest_store_rules(body: StoreTest):
     """Ask the AI provider for extraction rules for this page. Nothing is saved."""
     try:
-        html, _ = await fetch_body(normalize_url(body.url), load_store(store_columns(body)))
+        html, _ = await fetch_body(normalize_url(body.url), load_store(store_columns(body, body.id)))
         return await ai.suggest_strategies(html, body.url)
     except (ScrapeError, ai.AIError) as e:
         raise HTTPException(502, str(e))
@@ -604,10 +713,11 @@ def mark_notifications_read():
 
 @app.get("/api/settings")
 def get_settings():
-    """Everything the UI needs. The AI key itself is never sent back."""
+    """Everything the UI needs. Secrets come back masked, and the AI key not at all."""
+    webhook = db.get_setting("discord_webhook")
     return {
-        "notify_urls": db.get_setting("notify_urls"),
-        "discord_webhook": db.get_setting("discord_webhook"),
+        "notify_urls": mask_lines(db.get_setting("notify_urls")),
+        "discord_webhook": mask_url(webhook) if webhook else "",
         "searxng_url": db.get_setting("searxng_url") or SEARXNG_URL,
         "ai_provider": db.get_setting("ai_provider"),
         "ai_model": db.get_setting("ai_model"),
@@ -615,6 +725,8 @@ def get_settings():
         "ai_key_set": bool(ai.config()["api_key"]),
         "features": {"search": bool(db.get_setting("searxng_url") or SEARXNG_URL), "ai": ai.enabled()},
         "dashboard": json.loads(db.get_setting("dashboard", "{}")),
+        "version": VERSION,
+        "update": available_update(),
     }
 
 
@@ -622,13 +734,24 @@ def get_settings():
 def put_settings(body: SettingsIn):
     if body.ai_provider and body.ai_provider not in ai.PROVIDERS:
         raise HTTPException(400, "Unknown AI provider")
+    saved_webhook = db.get_setting("discord_webhook")
     webhook = body.discord_webhook.strip()
-    if webhook and not DISCORD_WEBHOOK_RE.fullmatch(webhook):
+    if saved_webhook and webhook == mask_url(saved_webhook):
+        webhook = saved_webhook
+    elif webhook and not DISCORD_WEBHOOK_RE.fullmatch(webhook):
         raise HTTPException(400, "That isn't a Discord webhook URL (https://discord.com/api/webhooks/…)")
-    for key in ("notify_urls", "discord_webhook", "searxng_url", "ai_provider", "ai_model", "ai_base_url"):
-        db.set_setting(key, getattr(body, key).strip())
+    # A saved key was entered for one destination. If that destination changes,
+    # the key has to be entered again rather than being sent somewhere new.
+    moved = (body.ai_provider.strip(), body.ai_base_url.strip()) != (
+        db.get_setting("ai_provider"), db.get_setting("ai_base_url"))
     if body.ai_api_key.strip():
         db.set_setting("ai_api_key", body.ai_api_key.strip())
+    elif moved:
+        db.set_setting("ai_api_key", "")
+    db.set_setting("discord_webhook", webhook)
+    db.set_setting("notify_urls", unmask_lines(body.notify_urls, db.get_setting("notify_urls")))
+    for key in ("searxng_url", "ai_provider", "ai_model", "ai_base_url"):
+        db.set_setting(key, getattr(body, key).strip())
     return get_settings()
 
 
