@@ -15,6 +15,7 @@ Open http://localhost:8080. Data lives in `./data/tracker.db` — back up that f
 ## Features
 
 - **Any store** — paste a URL and the price, title, image and availability are auto-detected. A *store* (per-domain scraping config) is created automatically.
+- **Product pictures** — the product photo is taken from the store page and a copy is kept in `./data/images`, so it still shows when a shop blocks hotlinking.
 - **Compare stores** — add several URLs to one product; the cheapest buyable source is the product's price.
 - **Unit pricing** — give each source a pack size and the product a unit name to compare by price per tablet, bag, litre, etc.
 - **Availability** — in stock, pre-order, back order, out of stock, discontinued. Out-of-stock sources don't count as the best price.

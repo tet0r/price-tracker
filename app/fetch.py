@@ -19,6 +19,11 @@ HEADERS = {
     "Upgrade-Insecure-Requests": "1",
 }
 
+IMAGE_TYPES = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif",
+}
+MAX_IMAGE_BYTES = 5_000_000
+
 # One Chromium at a time keeps memory use predictable
 _browser_slot = asyncio.Semaphore(1)
 
@@ -44,6 +49,25 @@ async def fetch_http(url: str, cookies: str = "") -> str:
         resp = await client.get(url)
         resp.raise_for_status()
         return resp.text
+
+
+async def fetch_image(url: str, referer: str) -> tuple[bytes, str] | None:
+    """Download a product photo. Returns (bytes, file extension), or None if it isn't a usable image."""
+    headers = {"User-Agent": USER_AGENT, "Accept": "image/avif,image/webp,image/*,*/*;q=0.8", "Referer": referer}
+    try:
+        async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=20) as client:
+            async with client.stream("GET", url) as resp:
+                kind = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                if resp.status_code != 200 or kind not in IMAGE_TYPES:
+                    return None
+                data = b""
+                async for chunk in resp.aiter_bytes():
+                    data += chunk
+                    if len(data) > MAX_IMAGE_BYTES:
+                        return None
+    except httpx.HTTPError:
+        return None
+    return (data, IMAGE_TYPES[kind]) if data else None
 
 
 async def fetch_browser(url: str, cookies: str = "") -> str:

@@ -58,6 +58,25 @@ AVAILABILITY_PATTERNS = [
     ("in_stock", r"in\s*stock|available|limited\s*availability|online\s*only|in\s*store\s*only|add to (cart|basket|bag)"),
 ]
 
+# Where the main product photo usually lives, most specific first
+IMAGE_SELECTORS = [
+    "[itemprop=image]",
+    "link[rel=image_src]",
+    "#landingImage",
+    "#imgBlkFront",
+    "[data-testid*=product-image i] img",
+    "[class*=product-image i] img",
+    "[class*=product__media i] img",
+    "[class*=product-gallery i] img",
+    "[class*=gallery i] img",
+    "[id*=product i] img",
+    "[class*=product i] img",
+    "main img",
+    "article img",
+]
+IMAGE_ATTRS = ("content", "href", "data-old-hires", "data-zoom-image", "data-src", "data-lazy-src", "src")
+NOT_A_PHOTO_RE = re.compile(r"logo|icon|sprite|placeholder|spinner|loading|pixel|blank|avatar|badge|flag|\.svg", re.I)
+
 PRICE_SELECTORS = [
     # (selector, needs a currency symbol/code in the text to be trusted)
     ("[itemprop=price]", False),
@@ -186,7 +205,7 @@ def _meta(soup: BeautifulSoup, *keys: str) -> str | None:
 def _from_meta(soup: BeautifulSoup) -> Extracted:
     ex = Extracted(
         name=_meta(soup, "og:title", "twitter:title"),
-        image=_meta(soup, "og:image", "og:image:url", "twitter:image"),
+        image=_meta(soup, "og:image:secure_url", "og:image", "og:image:url", "twitter:image", "twitter:image:src"),
         currency=_meta(soup, "product:price:currency", "og:price:currency", "priceCurrency"),
         availability=map_availability(_meta(soup, "product:availability", "og:availability", "availability")),
     )
@@ -241,6 +260,29 @@ def _from_heuristics(soup: BeautifulSoup) -> Extracted:
             if price and (currency or not needs_currency):
                 return Extracted(price=price, currency=currency, source="heuristic")
     return Extracted()
+
+
+def _small(el) -> bool:
+    """True if the tag declares itself smaller than a product photo would be."""
+    for attr in ("width", "height"):
+        size = str(el.get(attr) or "")
+        if size.isdigit() and int(size) < 100:
+            return True
+    return False
+
+
+def _guess_image(soup: BeautifulSoup) -> str | None:
+    """Best guess at the product photo for pages with no structured image data."""
+    for selector in IMAGE_SELECTORS:
+        for el in soup.select(selector, limit=10):
+            if _small(el):
+                continue
+            candidates = [el.get(attr) for attr in IMAGE_ATTRS]
+            candidates.append(str(el.get("srcset") or "").split(",")[-1].strip().split(" ")[0])
+            for src in candidates:
+                if src and not src.startswith("data:") and not NOT_A_PHOTO_RE.search(src):
+                    return src
+    return None
 
 
 def _by_selector(soup: BeautifulSoup, value: str):
@@ -317,7 +359,10 @@ def extract(body: str, url: str, strategies: dict | None = None) -> Extracted:
     out.name = " ".join(str(name).split())[:300] if name else None
 
     kind, raw = resolve("image")
-    image = raw if kind == "custom" else jsonld.image if kind == "schema" else jsonld.image or meta.image
+    if kind == "custom":
+        image = raw
+    else:
+        image = jsonld.image or (None if kind == "schema" else meta.image or _guess_image(soup))
     image = urljoin(url, str(image)) if image else None
     out.image = image if image and image.startswith(("http://", "https://")) else None
 

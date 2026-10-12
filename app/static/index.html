@@ -63,7 +63,15 @@
   .card.drop { box-shadow: -4px 0 0 var(--accent); }
   .group.drop { outline: 2px dashed var(--accent); outline-offset: 6px; }
   .top { display: flex; gap: 11px; min-width: 0; }
-  .top img { width: 56px; height: 56px; object-fit: contain; border-radius: 8px; background: #fff; flex: none; }
+  .thumb { height: 150px; border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center;
+           overflow: hidden; flex: none; }
+  .thumb img { width: 100%; height: 100%; object-fit: contain; padding: 6px; }
+  .thumb.none { background: var(--bg); color: var(--muted); font-size: 13px; }
+  .thumb.none::after { content: "No picture found"; }
+  .head { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
+  .head h2 { margin: 0; }
+  .head .thumb { width: 96px; height: 96px; }
+  .head .thumb.none { display: none; }
   .top > div { min-width: 0; }
   .name { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
           overflow: hidden; overflow-wrap: anywhere; }
@@ -389,14 +397,20 @@ function card(p, draggable) {
   if (d.good) foot.push(`<span class="badge down">Good to buy</span>`);
   if (p.target_price != null) foot.push(`<span class="badge">Target ${money(p.target_price, d.currency)}</span>`);
   return `<div class="card ${p.paused ? "paused" : ""}" data-id="${p.id}" tabindex="0" role="button" ${draggable ? `draggable="true"` : ""}>
+    ${thumb(p)}
     <div class="top">
-      ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
       <div><div class="name">${esc(p.name || p.urls[0]?.url || "Untitled")}</div><div class="sub">${where}</div></div>
     </div>
     <div class="price-row"><span class="price">${money(d.price, d.currency)}${perUnit(p, d)}</span>${change}${availabilityBadge(d.soldOut ? d.best.availability : null)}</div>
     ${chart([{ points: d.series, color: "var(--accent)" }], p.target_price)}
     <div class="foot"><span>Checked ${ago(p.last_checked)}</span>${foot.join("")}</div>
   </div>`;
+}
+
+// Product photo: the server's saved copy when it has one, else the shop's own image URL
+function thumb(p) {
+  if (!p.image) return `<div class="thumb none"></div>`;
+  return `<div class="thumb"><img src="${esc(p.image)}" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('none'); this.remove()"></div>`;
 }
 
 // A group is a tag; "" is the group for untagged products
@@ -589,7 +603,7 @@ function renderProduct() {
     </tr>`).join("");
   const interval = INTERVALS.some(i => i[0] === p.interval_minutes) ? INTERVALS : [...INTERVALS, [p.interval_minutes, `${p.interval_minutes} minutes`]];
   $("#product").innerHTML = `
-    <h2>${esc(p.name || "Untitled product")}</h2>
+    <div class="head">${thumb(p)}<h2>${esc(p.name || "Untitled product")}</h2></div>
     <div class="price-row"><span class="price">${money(d.price, d.currency)}${perUnit(p, d)}</span>${availabilityBadge(d.soldOut ? d.best.availability : null)}
       ${d.good ? `<span class="badge down">Good to buy</span>` : ""}</div>
     <div class="stats">

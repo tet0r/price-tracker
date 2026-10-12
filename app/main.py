@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from . import ai, db
 from .extract import UNAVAILABLE
-from .fetch import ScrapeError, fetch_body, scrape
+from .fetch import ScrapeError, fetch_body, fetch_image, scrape
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("pricetracker")
@@ -31,6 +31,8 @@ AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "admin")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "")
 STATIC = Path(__file__).parent / "static"
+# Product photos are copied here so they still load when a shop blocks hotlinking
+IMAGE_DIR = Path(db.DATA_DIR) / "images"
 
 # Query parameters that don't change which product a URL points at
 TRACKING_PARAMS = {
@@ -119,6 +121,19 @@ def add_url(product_id: int, url: str) -> int:
         raise HTTPException(409, "You're already tracking that URL")
 
 
+def image_file(product_id: int) -> Path | None:
+    return next(IMAGE_DIR.glob(f"{product_id}.*"), None)
+
+
+async def cache_image(product: dict, page_url: str) -> None:
+    if not product["image"] or image_file(product["id"]):
+        return
+    downloaded = await fetch_image(product["image"], page_url)
+    if downloaded:
+        IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+        (IMAGE_DIR / f"{product['id']}.{downloaded[1]}").write_bytes(downloaded[0])
+
+
 def best_price(product_id: int) -> float | None:
     """Lowest price per unit among sources that can actually be bought right now.
 
@@ -151,6 +166,9 @@ def serialize(product: dict) -> dict:
         u["history"] = [[h["checked_at"], h["price"]] for h in history]
         del u["url_key"]
     product["urls"] = urls
+    cached = image_file(product["id"])
+    if cached:
+        product["image"] = f"/api/products/{product['id']}/image?v={int(cached.stat().st_mtime)}"
     product["tags"] = json.loads(product["tags"])
     for key in ("notify_on_drop", "notify_back_in_stock", "paused"):
         product[key] = bool(product[key])
@@ -257,6 +275,7 @@ async def check_url(u: dict) -> None:
         "UPDATE products SET name = COALESCE(name, ?), image = COALESCE(image, ?) WHERE id = ?",
         (found.name, found.image, u["product_id"]),
     )
+    await cache_image(get_product(u["product_id"]), u["url"])
 
 
 async def check_product(product: dict) -> None:
@@ -398,6 +417,17 @@ def update_product(product_id: int, body: ProductPatch):
 def delete_product(product_id: int):
     get_product(product_id)
     db.execute("DELETE FROM products WHERE id = ?", (product_id,))
+    cached = image_file(product_id)
+    if cached:
+        cached.unlink(missing_ok=True)
+
+
+@app.get("/api/products/{product_id}/image")
+def product_image(product_id: int):
+    cached = image_file(product_id)
+    if not cached:
+        raise HTTPException(404, "No image")
+    return FileResponse(cached, headers={"Cache-Control": "private, max-age=604800"})
 
 
 @app.post("/api/products/{product_id}/check")
