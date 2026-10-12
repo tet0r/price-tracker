@@ -14,13 +14,14 @@ from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlparse
 
 import apprise
+import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from . import db
+from . import ai, db
 from .extract import UNAVAILABLE
-from .fetch import ScrapeError, scrape
+from .fetch import ScrapeError, fetch_body, scrape
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("pricetracker")
@@ -28,6 +29,7 @@ log = logging.getLogger("pricetracker")
 DEFAULT_INTERVAL = int(os.environ.get("CHECK_INTERVAL_MINUTES", "360"))
 AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "admin")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
+SEARXNG_URL = os.environ.get("SEARXNG_URL", "")
 STATIC = Path(__file__).parent / "static"
 
 # Query parameters that don't change which product a URL points at
@@ -55,6 +57,7 @@ def load_store(row: dict) -> dict:
     row["domains"] = json.loads(row["domains"])
     row["strategies"] = json.loads(row["strategies"])
     row["missing_price_oos"] = bool(row["missing_price_oos"])
+    row["ai_extract"] = bool(row.get("ai_extract"))
     return row
 
 
@@ -115,13 +118,22 @@ def add_url(product_id: int, url: str) -> int:
 
 
 def best_price(product_id: int) -> float | None:
-    """Lowest price among sources that can actually be bought right now."""
+    """Lowest price per unit among sources that can actually be bought right now.
+
+    Pack size defaults to 1, so this is the plain price unless unit pricing is in use.
+    """
+    best = best_source(product_id)
+    return best["unit_price"] if best else None
+
+
+def best_source(product_id: int) -> dict | None:
     rows = db.query(
-        "SELECT price, availability FROM urls WHERE product_id = ? AND price IS NOT NULL",
+        "SELECT u.url, u.availability, u.units, u.price / u.units AS unit_price, "
+        "s.name AS store, s.currency FROM urls u JOIN stores s ON s.id = u.store_id "
+        "WHERE u.product_id = ? AND u.price IS NOT NULL ORDER BY unit_price, u.id",
         (product_id,),
     )
-    buyable = [r["price"] for r in rows if r["availability"] not in UNAVAILABLE]
-    return min(buyable) if buyable else None
+    return next((r for r in rows if r["availability"] not in UNAVAILABLE), None)
 
 
 def serialize(product: dict) -> dict:
@@ -170,15 +182,12 @@ async def notify_changes(product: dict, old: float | None, new: float | None, wa
     if new is None:
         return
     name = (product["name"] or "Product")[:80]
-    cheapest = db.query(
-        "SELECT u.url, s.name AS store, s.currency FROM urls u JOIN stores s ON s.id = u.store_id "
-        "WHERE u.product_id = ? AND u.price = ? ORDER BY u.id LIMIT 1",
-        (product["id"], new),
-    )
-    source = cheapest[0] if cheapest else {"url": "", "store": "", "currency": None}
+    source = best_source(product["id"]) or {"url": "", "store": "", "currency": None, "units": 1}
+    per_unit = f" per {product['unit_label'] or 'unit'}" if source["units"] != 1 else ""
 
     def money(value: float) -> str:
-        return f"{value:,.2f} {source['currency']}" if source["currency"] else f"{value:,.2f}"
+        amount = f"{value:,.2f} {source['currency']}" if source["currency"] else f"{value:,.2f}"
+        return amount + per_unit
 
     where = f" at {source['store']}\n{source['url']}"
     target = product["target_price"]
@@ -288,6 +297,7 @@ class UrlIn(BaseModel):
 
 class ProductPatch(BaseModel):
     name: str | None = None
+    unit_label: str | None = None
     tags: list[str] | None = None
     target_price: float | None = Field(None, gt=0)
     notify_on_drop: bool | None = None
@@ -297,9 +307,30 @@ class ProductPatch(BaseModel):
     paused: bool | None = None
 
 
+class OrderIn(BaseModel):
+    ids: list[int]
+
+
+class UrlPatch(BaseModel):
+    units: float = Field(gt=0)
+
+
 @app.get("/api/products")
 def list_products():
-    return [serialize(p) for p in db.query("SELECT * FROM products ORDER BY created_at DESC, id DESC")]
+    return [serialize(p) for p in db.query("SELECT * FROM products ORDER BY position, id DESC")]
+
+
+@app.post("/api/products/order", status_code=204)
+def order_products(body: OrderIn):
+    for position, product_id in enumerate(body.ids):
+        db.execute("UPDATE products SET position = ? WHERE id = ?", (position, product_id))
+
+
+@app.get("/api/lookup")
+def lookup(url: str):
+    """The product tracking this URL, if any. Used by the browser extension."""
+    rows = db.query("SELECT product_id FROM urls WHERE url_key = ?", (url_key(normalize_url(url)),))
+    return serialize(get_product(rows[0]["product_id"])) if rows else None
 
 
 @app.post("/api/products", status_code=201)
@@ -308,7 +339,8 @@ async def add_product(body: UrlIn):
     if db.query("SELECT 1 FROM urls WHERE url_key = ?", (url_key(url),)):
         raise HTTPException(409, "You're already tracking that URL")
     product_id = db.execute(
-        "INSERT INTO products (interval_minutes, created_at) VALUES (?, ?)",
+        "INSERT INTO products (interval_minutes, created_at, position) "
+        "VALUES (?, ?, (SELECT COALESCE(MIN(position), 0) - 1 FROM products))",
         (DEFAULT_INTERVAL, int(time.time())),
     )
     add_url(product_id, url)
@@ -320,10 +352,12 @@ async def add_product(body: UrlIn):
 def update_product(product_id: int, body: ProductPatch):
     get_product(product_id)
     changes = body.model_dump(exclude_unset=True)
-    # Only these two may be cleared; a null for anything else means "leave as is"
-    changes = {k: v for k, v in changes.items() if v is not None or k in ("name", "target_price")}
-    if "name" in changes:
-        changes["name"] = (changes["name"] or "").strip() or None
+    # Only these may be cleared; a null for anything else means "leave as is"
+    clearable = ("name", "unit_label", "target_price")
+    changes = {k: v for k, v in changes.items() if v is not None or k in clearable}
+    for key in ("name", "unit_label"):
+        if key in changes:
+            changes[key] = (changes[key] or "").strip() or None
     if "tags" in changes:
         changes["tags"] = json.dumps(sorted({t.strip() for t in changes["tags"] if t.strip()}))
     if changes:
@@ -354,6 +388,13 @@ async def add_product_url(product_id: int, body: UrlIn):
     return serialize(get_product(product_id))
 
 
+@app.patch("/api/urls/{url_id}")
+def update_url(url_id: int, body: UrlPatch):
+    u = one("SELECT * FROM urls WHERE id = ?", (url_id,), "URL")
+    db.execute("UPDATE urls SET units = ? WHERE id = ?", (body.units, url_id))
+    return serialize(get_product(u["product_id"]))
+
+
 @app.delete("/api/urls/{url_id}")
 def delete_url(url_id: int):
     u = one("SELECT * FROM urls WHERE id = ?", (url_id,), "URL")
@@ -376,6 +417,7 @@ class StoreIn(BaseModel):
     cookies: str = ""
     strategies: dict[Literal["title", "price", "image", "availability"], Strategy] = {}
     missing_price_oos: bool = False
+    ai_extract: bool = False
 
 
 class StoreTest(StoreIn):
@@ -392,6 +434,7 @@ def store_columns(body: StoreIn) -> dict:
         "cookies": body.cookies.strip(),
         "strategies": json.dumps({k: v.model_dump() for k, v in body.strategies.items()}),
         "missing_price_oos": int(body.missing_price_oos),
+        "ai_extract": int(body.ai_extract),
     }
 
 
@@ -447,10 +490,56 @@ async def test_store(body: StoreTest):
     }
 
 
+@app.post("/api/stores/suggest")
+async def suggest_store_rules(body: StoreTest):
+    """Ask the AI provider for extraction rules for this page. Nothing is saved."""
+    try:
+        html, _ = await fetch_body(normalize_url(body.url), load_store(store_columns(body)))
+        return await ai.suggest_strategies(html, body.url)
+    except (ScrapeError, ai.AIError) as e:
+        raise HTTPException(502, str(e))
+
+
+# ---------- search ----------
+
+@app.get("/api/search")
+async def search(q: str):
+    """Search for product pages through the configured SearXNG instance."""
+    base = (db.get_setting("searxng_url") or SEARXNG_URL).rstrip("/")
+    if not base:
+        raise HTTPException(400, "Set a SearXNG URL in Settings to search")
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            resp = await client.get(f"{base}/search", params={"q": q, "format": "json"})
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Could not reach SearXNG: {type(e).__name__}")
+    if resp.status_code == 403:
+        raise HTTPException(502, "SearXNG refused the request. Enable the json format in its settings.yml (search.formats).")
+    try:
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(502, f"SearXNG returned an unexpected response (HTTP {resp.status_code})")
+    tracked = {r["url_key"] for r in db.query("SELECT url_key FROM urls")}
+    return [
+        {
+            "title": r.get("title") or r["url"], "url": r["url"], "host": host_of(r["url"]),
+            "snippet": (r.get("content") or "")[:200], "tracked": url_key(r["url"]) in tracked,
+        }
+        for r in results[:15] if str(r.get("url", "")).startswith(("http://", "https://"))
+    ]
+
+
 # ---------- notifications & settings ----------
 
 class SettingsIn(BaseModel):
     notify_urls: str = ""
+    searxng_url: str = ""
+    ai_provider: str = ""
+    ai_model: str = ""
+    ai_base_url: str = ""
+    # Left empty to keep the stored key
+    ai_api_key: str = ""
 
 
 @app.get("/api/notifications")
@@ -465,13 +554,34 @@ def mark_notifications_read():
 
 @app.get("/api/settings")
 def get_settings():
-    return {"notify_urls": db.get_setting("notify_urls")}
+    """Everything the UI needs. The AI key itself is never sent back."""
+    return {
+        "notify_urls": db.get_setting("notify_urls"),
+        "searxng_url": db.get_setting("searxng_url") or SEARXNG_URL,
+        "ai_provider": db.get_setting("ai_provider"),
+        "ai_model": db.get_setting("ai_model"),
+        "ai_base_url": db.get_setting("ai_base_url"),
+        "ai_key_set": bool(ai.config()["api_key"]),
+        "features": {"search": bool(db.get_setting("searxng_url") or SEARXNG_URL), "ai": ai.enabled()},
+        "dashboard": json.loads(db.get_setting("dashboard", "{}")),
+    }
 
 
 @app.put("/api/settings")
 def put_settings(body: SettingsIn):
-    db.set_setting("notify_urls", body.notify_urls.strip())
+    if body.ai_provider and body.ai_provider not in ai.PROVIDERS:
+        raise HTTPException(400, "Unknown AI provider")
+    for key in ("notify_urls", "searxng_url", "ai_provider", "ai_model", "ai_base_url"):
+        db.set_setting(key, getattr(body, key).strip())
+    if body.ai_api_key.strip():
+        db.set_setting("ai_api_key", body.ai_api_key.strip())
     return get_settings()
+
+
+@app.put("/api/dashboard", status_code=204)
+def put_dashboard(body: dict):
+    """Dashboard layout: group order, collapsed groups and hidden sections."""
+    db.set_setting("dashboard", json.dumps(body))
 
 
 @app.post("/api/settings/test")

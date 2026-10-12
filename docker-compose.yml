@@ -8,6 +8,9 @@ services:
       - "8080:8000"
     volumes:
       - ./data:/data
+    # Lets the container reach services on the Docker host (e.g. a local Ollama)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # Default minutes between checks for newly added products
       CHECK_INTERVAL_MINUTES: 360
@@ -16,3 +19,6 @@ services:
       # Set a password to require a login (HTTP basic auth). Empty = no login.
       AUTH_USERNAME: admin
       AUTH_PASSWORD: ""
+      # Optional. Both can also be set in the app under Settings.
+      SEARXNG_URL: ""
+      AI_API_KEY: ""

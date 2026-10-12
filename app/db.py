@@ -68,6 +68,13 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 """
+# Columns added after the first release: (table, column, definition)
+MIGRATIONS = [
+    ("urls", "units", "REAL NOT NULL DEFAULT 1"),
+    ("products", "unit_label", "TEXT"),
+    ("products", "position", "INTEGER NOT NULL DEFAULT 0"),
+    ("stores", "ai_extract", "INTEGER NOT NULL DEFAULT 0"),
+]
 
 
 def init() -> None:
@@ -78,6 +85,10 @@ def init() -> None:
     _conn.execute("PRAGMA foreign_keys = ON")
     _conn.execute("PRAGMA journal_mode = WAL")
     _conn.executescript(SCHEMA)
+    for table, column, definition in MIGRATIONS:
+        existing = {row["name"] for row in _conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            _conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     _conn.commit()
 
 

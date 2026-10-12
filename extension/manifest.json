@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Price Tracker Companion",
+  "version": "1.0.0",
+  "description": "Track the product page you're on in your self-hosted Price Tracker and see how its price compares.",
+  "action": { "default_popup": "popup.html", "default_title": "Price Tracker" },
+  "permissions": ["activeTab", "storage"],
+  "optional_host_permissions": ["*://*/*"]
+}

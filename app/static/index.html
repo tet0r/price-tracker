@@ -35,7 +35,7 @@
   button { border: 1px solid var(--line); background: var(--card); border-radius: 8px;
            padding: 8px 13px; cursor: pointer; white-space: nowrap; }
   button:hover { border-color: var(--muted); }
-  button:disabled { opacity: .55; cursor: wait; }
+  button:disabled { opacity: .55; cursor: default; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   @media (prefers-color-scheme: dark) { button.primary { color: #0b1020; } }
   button.danger { color: var(--up); }
@@ -45,14 +45,23 @@
   .bar input { flex: 1; }
   #add { margin-bottom: 14px; }
   #add input { padding: 12px 14px; }
-  #chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
-  .chip { border-radius: 99px; padding: 4px 12px; font-size: 13.5px; }
-  .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
-  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px;
+          font-size: 12.5px; color: var(--muted); }
+  .tile b { display: block; font-size: 22px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .group, .smart { margin-bottom: 22px; border-radius: 12px; }
+  .group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .group-head h2 { margin: 0; font-size: 15px; }
+  .group .group-head { cursor: grab; }
+  .grip { color: var(--muted); user-select: none; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+  .group .grid:empty::after { content: "Drop a product here"; color: var(--muted); font-size: 13px; padding: 8px 0; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
           display: flex; flex-direction: column; gap: 9px; min-width: 0; cursor: pointer; text-align: left; }
   .card:hover { border-color: var(--muted); }
   .card.paused { opacity: .6; }
+  .card.drop { box-shadow: -4px 0 0 var(--accent); }
+  .group.drop { outline: 2px dashed var(--accent); outline-offset: 6px; }
   .top { display: flex; gap: 11px; min-width: 0; }
   .top img { width: 56px; height: 56px; object-fit: contain; border-radius: 8px; background: #fff; flex: none; }
   .top > div { min-width: 0; }
@@ -61,6 +70,7 @@
   .sub, .foot { color: var(--muted); font-size: 13px; }
   .price-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   .price { font-size: 25px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .price small { font-size: 13px; font-weight: 500; color: var(--muted); }
   .badge { font-size: 12.5px; font-weight: 600; padding: 2px 8px; border-radius: 99px; white-space: nowrap;
            background: var(--bg); color: var(--muted); }
   .badge.down, .badge.in_stock { color: var(--down); background: var(--down-bg); }
@@ -73,9 +83,14 @@
   svg.chart line { stroke: var(--down); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
   .foot { margin-top: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .foot span:first-child { flex: 1; }
-  .empty { text-align: center; color: var(--muted); padding: 50px 20px; grid-column: 1 / -1; }
+  .empty { text-align: center; color: var(--muted); padding: 50px 20px; }
+  .results { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px 14px; margin-bottom: 16px; }
+  .result { display: flex; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .result:last-child { border-bottom: 0; }
+  .result > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .result a { color: inherit; font-weight: 600; }
   dialog { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 14px;
-           padding: 20px; width: min(680px, calc(100vw - 20px)); max-height: calc(100vh - 20px); }
+           padding: 20px; width: min(720px, calc(100vw - 20px)); max-height: calc(100vh - 20px); }
   dialog::backdrop { background: rgba(0, 0, 0, .5); }
   label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 11px; }
   label > input, label > select, label > textarea { margin-top: 4px; color: var(--text); }
@@ -93,11 +108,13 @@
   .stats b { display: block; font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
   .hint { font-size: 12.5px; color: var(--muted); margin: -4px 0 11px; }
   code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .scroll { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th { text-align: left; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+  th { text-align: left; font-size: 12.5px; color: var(--muted); font-weight: 500; white-space: nowrap; }
   th, td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--line); vertical-align: middle; overflow-wrap: anywhere; }
   td.num { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
   td a { color: inherit; }
+  td input { width: 68px; padding: 4px 6px; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
   .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 6px 16px 10px; overflow-x: auto; }
   .strategy { display: grid; grid-template-columns: 92px 150px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 13.5px; }
@@ -114,6 +131,7 @@
   <header>
     <h1>Price Tracker</h1>
     <nav><a href="#/" data-view="dashboard">Products</a><a href="#/stores" data-view="stores">Stores</a></nav>
+    <button id="open-customize">Customize</button>
     <button id="open-alerts">Alerts<span class="count" id="unread" hidden></span></button>
     <button id="open-settings">Settings</button>
   </header>
@@ -123,8 +141,8 @@
       <input id="url" type="text" placeholder="Paste a product URL from any site…" autocomplete="off" required>
       <button class="primary">Track</button>
     </form>
-    <div id="chips"></div>
-    <div id="grid"></div>
+    <div id="search-results"></div>
+    <div id="board"></div>
   </section>
 
   <section id="stores" hidden>
@@ -162,10 +180,12 @@
       Regex: first capture group, e.g. <code>"price":\s*"(.*?)"</code>. JSON path: <code>product.price</code>.</p>
     <label>Cookies sent with each request (optional) <input name="cookies" placeholder="name=value; other=value" spellcheck="false"></label>
     <label class="check"><input name="missing_price_oos" type="checkbox"> Treat a missing price as out of stock</label>
+    <label class="check" data-needs="ai"><input name="ai_extract" type="checkbox"> Let AI read the price when these rules find none</label>
     <h3>Test</h3>
     <div class="bar">
       <input name="test_url" placeholder="Product URL from this store" spellcheck="false">
       <button type="button" id="test-store">Test</button>
+      <button type="button" id="suggest-store" data-needs="ai">Suggest rules with AI</button>
     </div>
     <div id="test-result"></div>
     <div class="actions">
@@ -183,16 +203,47 @@
   <div class="actions"><span class="spacer"></span><button data-close>Close</button></div>
 </dialog>
 
+<dialog id="customize">
+  <form id="customize-form">
+    <h2>Customize dashboard</h2>
+    <label class="check"><input type="checkbox" name="stats"> Summary stats</label>
+    <label class="check"><input type="checkbox" name="good"> What's good to buy now</label>
+    <label class="check"><input type="checkbox" name="dropped"> Recently dropped</label>
+    <label class="check"><input type="checkbox" name="attention"> Needs attention</label>
+    <p class="hint" style="margin-top:8px">Products are grouped by tag. Drag a group's title to reorder groups, drag a product to reorder it or move it to another group (which re-tags it), and use ▾ to collapse a group.</p>
+    <div class="actions"><span class="spacer"></span><button type="button" data-close>Cancel</button><button class="primary">Save</button></div>
+  </form>
+</dialog>
+
 <dialog id="settings">
   <form id="settings-form">
-    <h2>Notification services</h2>
+    <h2>Settings</h2>
+    <h3 style="margin-top:0">Notification services</h3>
     <label>Apprise URLs, one per line
-      <textarea name="notify_urls" rows="4" spellcheck="false" placeholder="ntfy://ntfy.sh/my-topic&#10;discord://webhook_id/webhook_token"></textarea>
+      <textarea name="notify_urls" rows="3" spellcheck="false" placeholder="ntfy://ntfy.sh/my-topic&#10;discord://webhook_id/webhook_token"></textarea>
     </label>
     <p class="hint">Alerts always appear in-app. Add URLs to also send them to ntfy, Discord, Telegram, Gotify, Pushover, Slack, email and more:
-      <code>ntfy://ntfy.sh/topic</code> <code>tgram://bottoken/chatid</code> <code>gotify://host/token</code> <code>mailtos://user:pass@gmail.com</code></p>
+      <code>ntfy://ntfy.sh/topic</code> <code>tgram://bottoken/chatid</code> <code>mailtos://user:pass@gmail.com</code></p>
+    <h3>Product search</h3>
+    <label>SearXNG URL <input name="searxng_url" placeholder="http://searxng:8080" spellcheck="false"></label>
+    <p class="hint">Lets you type a product name instead of a URL, and find a product at other stores. The instance must allow the <code>json</code> format.</p>
+    <h3>AI-assisted scraping</h3>
+    <div class="row">
+      <label>Provider
+        <select name="ai_provider">
+          <option value="">Off</option><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option>
+          <option value="gemini">Gemini</option><option value="ollama">Ollama (local)</option>
+        </select>
+      </label>
+      <label>Model <input name="ai_model" spellcheck="false"></label>
+    </div>
+    <div class="row">
+      <label>API key <input name="ai_api_key" type="password" autocomplete="off"></label>
+      <label>Base URL (optional) <input name="ai_base_url" spellcheck="false"></label>
+    </div>
+    <p class="hint">Used only when you turn it on for a store or click “Suggest rules with AI”. Page content is sent to the provider you choose.</p>
     <div class="actions">
-      <button type="button" id="test-notify">Send test</button>
+      <button type="button" id="test-notify">Send test notification</button>
       <span class="spacer"></span>
       <button type="button" data-close>Cancel</button>
       <button class="primary">Save</button>
@@ -210,7 +261,10 @@ const UNAVAILABLE = ["out_of_stock", "discontinued"];
 const COLORS = ["#2563eb", "#d97706", "#9333ea", "#0d9488", "#db2777", "#65a30d"];
 const INTERVALS = [[5, "5 minutes"], [15, "15 minutes"], [30, "30 minutes"], [60, "1 hour"], [180, "3 hours"], [360, "6 hours"], [720, "12 hours"], [1440, "24 hours"]];
 const FIELDS = ["title", "price", "image", "availability"];
-let products = [], stores = [], filter = "all", openId = null, storeId = null;
+const SMART = [["good", "What's good to buy now"], ["dropped", "Recently dropped"], ["attention", "Needs attention"]];
+const AI_MODELS = { anthropic: "claude-opus-5-5", openai: "e.g. gpt-5-mini", gemini: "e.g. gemini-2.5-flash", ollama: "e.g. llama3.1" };
+let products = [], stores = [], openId = null, storeId = null, drag = null;
+let features = { search: false, ai: false }, dash = { order: [], collapsed: [], hidden: [] };
 
 async function api(path, method = "GET", body) {
   const res = await fetch("/api" + path, {
@@ -230,7 +284,7 @@ async function busy(btn, label, fn) {
   const text = btn.textContent;
   btn.disabled = true; btn.textContent = label;
   try { return await fn(); } catch (e) { toast(e.message); }
-  finally { btn.disabled = false; btn.textContent = text; }
+  finally { if (btn.isConnected) { btn.disabled = false; btn.textContent = text; } }
 }
 
 function toast(msg) {
@@ -254,9 +308,12 @@ function ago(ts) {
   return `${Math.floor(m / 1440)}d ago`;
 }
 
-// Lowest price across all sources over time, as [timestamp, price] steps
+// Price per unit; pack size is 1 unless unit pricing is set up for the source
+const unitPrice = u => u.price / (u.units || 1);
+
+// Lowest unit price across all sources over time, as [timestamp, price] steps
 function bestSeries(urls) {
-  const events = urls.flatMap((u, i) => u.history.map(([t, v]) => [t, i, v])).sort((a, b) => a[0] - b[0]);
+  const events = urls.flatMap((u, i) => u.history.map(([t, v]) => [t, i, v / (u.units || 1)])).sort((a, b) => a[0] - b[0]);
   const current = {}, out = [];
   for (const [t, i, v] of events) {
     current[i] = v;
@@ -271,7 +328,8 @@ function derive(p) {
   const now = Date.now() / 1000;
   const priced = p.urls.filter(u => u.price != null);
   const buyable = priced.filter(u => !UNAVAILABLE.includes(u.availability));
-  const best = (buyable.length ? buyable : priced).reduce((a, b) => !a || b.price < a.price ? b : a, null);
+  const best = (buyable.length ? buyable : priced).reduce((a, b) => !a || unitPrice(b) < unitPrice(a) ? b : a, null);
+  const price = best ? unitPrice(best) : null;
   const series = bestSeries(p.urls), values = series.map(s => s[1]);
   const min = values.length ? Math.min(...values) : null, max = values.length ? Math.max(...values) : null;
   let avg = null;
@@ -284,13 +342,16 @@ function derive(p) {
   const pct = prev ? (last[1] - prev[1]) / prev[1] * 100 : null;
   const soldOut = priced.length > 0 && !buyable.length;
   return {
-    best, series, min, max, avg, pct, soldOut, currency: best?.currency,
-    good: !!best && !soldOut && ((p.target_price != null && best.price <= p.target_price)
-      || (series.length > 1 && best.price <= min && best.price < avg)),
+    best, price, series, min, max, avg, pct, soldOut, currency: best?.currency,
+    usesUnits: p.urls.some(u => (u.units || 1) !== 1),
+    good: !!best && !soldOut && ((p.target_price != null && price <= p.target_price)
+      || (series.length > 1 && price <= min && price < avg)),
     dropped: pct != null && pct < 0 && now - last[0] < 7 * 86400,
     attention: !p.urls.length || p.urls.some(u => u.last_error),
   };
 }
+
+const perUnit = (p, d) => d.usesUnits ? ` <small>/ ${esc(p.unit_label || "unit")}</small>` : "";
 
 // Step chart: a price holds until the next recorded change, and the last one extends to now
 function chart(lines, target) {
@@ -315,7 +376,7 @@ const availabilityBadge = a => a && a !== "in_stock" ? `<span class="badge ${a}"
 
 // ---------- dashboard ----------
 
-function card(p) {
+function card(p, draggable) {
   const d = derive(p);
   let change = "";
   if (d.pct) change = `<span class="badge ${d.pct < 0 ? "down" : "up"}">${d.pct < 0 ? "▼" : "▲"} ${Math.abs(d.pct).toFixed(1)}%</span>`;
@@ -325,32 +386,61 @@ function card(p) {
   if (d.attention) foot.push(`<span class="badge warn">Needs attention</span>`);
   if (d.good) foot.push(`<span class="badge down">Good to buy</span>`);
   if (p.target_price != null) foot.push(`<span class="badge">Target ${money(p.target_price, d.currency)}</span>`);
-  return `<div class="card ${p.paused ? "paused" : ""}" data-id="${p.id}" tabindex="0" role="button">
+  return `<div class="card ${p.paused ? "paused" : ""}" data-id="${p.id}" tabindex="0" role="button" ${draggable ? `draggable="true"` : ""}>
     <div class="top">
-      ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
+      ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
       <div><div class="name">${esc(p.name || p.urls[0]?.url || "Untitled")}</div><div class="sub">${where}</div></div>
     </div>
-    <div class="price-row"><span class="price">${money(d.best?.price, d.currency)}</span>${change}${availabilityBadge(d.soldOut ? d.best.availability : null)}</div>
+    <div class="price-row"><span class="price">${money(d.price, d.currency)}${perUnit(p, d)}</span>${change}${availabilityBadge(d.soldOut ? d.best.availability : null)}</div>
     ${chart([{ points: d.series, color: "var(--accent)" }], p.target_price)}
     <div class="foot"><span>Checked ${ago(p.last_checked)}</span>${foot.join("")}</div>
   </div>`;
 }
 
-function render() {
-  const derived = new Map(products.map(p => [p.id, derive(p)]));
-  const count = key => products.filter(p => derived.get(p.id)[key]).length;
-  const tags = [...new Set(products.flatMap(p => p.tags))].sort();
-  const chips = [["all", `All ${products.length}`], ["good", `Good to buy now ${count("good")}`],
-    ["dropped", `Recently dropped ${count("dropped")}`], ["attention", `Needs attention ${count("attention")}`],
-    ...tags.map(t => ["tag:" + t, "#" + t])];
-  if (!chips.some(c => c[0] === filter)) filter = "all";
-  $("#chips").innerHTML = products.length
-    ? chips.map(([k, label]) => `<button class="chip ${k === filter ? "on" : ""}" data-filter="${esc(k)}">${esc(label)}</button>`).join("") : "";
-  const shown = products.filter(p => filter === "all" ? true
-    : filter.startsWith("tag:") ? p.tags.includes(filter.slice(4)) : derived.get(p.id)[filter]);
-  $("#grid").innerHTML = shown.length ? shown.map(card).join("")
-    : `<div class="empty">${products.length ? "Nothing here right now." : "Nothing tracked yet. Paste a product URL above to start."}</div>`;
+// A group is a tag; "" is the group for untagged products
+const inGroup = (p, key) => key === "" ? !p.tags.length : p.tags.includes(key);
+
+function groupKeys() {
+  const keys = [...new Set(products.flatMap(p => p.tags))].sort((a, b) => a.localeCompare(b));
+  if (products.some(p => !p.tags.length)) keys.push("");
+  const rank = k => { const i = dash.order.indexOf(k); return i < 0 ? Infinity : i; };
+  return keys.sort((a, b) => rank(a) - rank(b));
 }
+
+function render() {
+  if (!products.length) {
+    $("#board").innerHTML = `<div class="empty">Nothing tracked yet. Paste a product URL above to start.</div>`;
+    return;
+  }
+  const derived = new Map(products.map(p => [p.id, derive(p)]));
+  const matching = key => products.filter(p => derived.get(p.id)[key]);
+  const shown = key => !dash.hidden.includes(key);
+  let html = "";
+  if (shown("stats")) {
+    const tiles = [["Products", products.length], ["Sources", products.reduce((n, p) => n + p.urls.length, 0)],
+      ["Good to buy", matching("good").length], ["Dropped this week", matching("dropped").length],
+      ["Need attention", matching("attention").length]];
+    html += `<div class="tiles">${tiles.map(([label, n]) => `<div class="tile"><b>${n}</b>${label}</div>`).join("")}</div>`;
+  }
+  for (const [key, title] of SMART) {
+    const list = matching(key);
+    if (list.length && shown(key)) html += `<section class="smart"><div class="group-head"><h2>${title}</h2><span class="sub">${list.length}</span></div>
+      <div class="grid">${list.map(p => card(p, false)).join("")}</div></section>`;
+  }
+  const keys = groupKeys();
+  html += keys.map(key => {
+    const list = products.filter(p => inGroup(p, key)), collapsed = dash.collapsed.includes(key);
+    const title = key || (keys.length > 1 ? "Untagged" : "All products");
+    return `<section class="group" data-group="${esc(key)}">
+      <div class="group-head" draggable="true" title="Drag to reorder groups"><span class="grip">⠿</span><h2>${esc(title)}</h2><span class="sub">${list.length}</span>
+        <span class="spacer"></span><button class="small" data-collapse title="${collapsed ? "Expand" : "Collapse"}">${collapsed ? "▸" : "▾"}</button></div>
+      ${collapsed ? "" : `<div class="grid">${list.map(p => card(p, true)).join("")}</div>`}
+    </section>`;
+  }).join("");
+  $("#board").innerHTML = html;
+}
+
+const saveDash = () => api("/dashboard", "PUT", dash).catch(e => toast(e.message));
 
 function setProduct(p) {
   products = products.map(x => x.id === p.id ? p : x);
@@ -358,41 +448,139 @@ function setProduct(p) {
   if (openId === p.id) renderProduct();
 }
 
+async function track(url) {
+  const p = await api("/products", "POST", { url });
+  products.unshift(p); render();
+  if (p.urls.some(u => u.last_error)) toast("Added, but no price was detected. Open it to see why.");
+}
+
+const looksLikeUrl = s => !/\s/.test(s) && (/^https?:\/\//i.test(s) || /^[^/]+\.[a-z]{2,}(\/|$)/i.test(s));
+
+function resultsHtml(results, action) {
+  if (!results.length) return `<p class="sub">No results.</p>`;
+  return results.map(r => `<div class="result">
+      <div><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.title)}</a><div class="sub">${esc(r.host)}${r.snippet ? " — " + esc(r.snippet) : ""}</div></div>
+      <button class="small" data-url="${esc(r.url)}" ${r.tracked ? "disabled" : ""}>${r.tracked ? "Tracked" : action}</button>
+    </div>`).join("");
+}
+
 $("#add").addEventListener("submit", e => {
   e.preventDefault();
-  busy(e.target.querySelector("button"), "Fetching…", async () => {
-    const p = await api("/products", "POST", { url: $("#url").value });
-    products.unshift(p); $("#url").value = ""; filter = "all"; render();
-    if (p.urls.some(u => u.last_error)) { toast("Added, but no price was detected. Open it to see why."); }
+  const value = $("#url").value.trim(), btn = e.target.querySelector("button");
+  if (looksLikeUrl(value)) {
+    return busy(btn, "Fetching…", async () => { await track(value); $("#url").value = ""; $("#search-results").innerHTML = ""; });
+  }
+  if (!features.search) return toast("Paste a full product URL. To search by name, add a SearXNG URL in Settings.");
+  busy(btn, "Searching…", async () => {
+    const results = await api("/search?q=" + encodeURIComponent(value));
+    $("#search-results").innerHTML = `<div class="results">${resultsHtml(results, "Track")}</div>`;
   });
 });
 
-$("#chips").addEventListener("click", e => {
-  const chip = e.target.closest("[data-filter]");
-  if (chip) { filter = chip.dataset.filter; render(); }
+$("#search-results").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-url]");
+  if (btn) busy(btn, "Fetching…", async () => { await track(btn.dataset.url); btn.dataset.done = 1; })
+    .then(() => { if (btn.dataset.done) { btn.textContent = "Tracked"; btn.disabled = true; } });
 });
 
-function cardOpen(e) {
+$("#board").addEventListener("click", e => {
+  const toggle = e.target.closest("[data-collapse]");
+  if (toggle) {
+    const key = toggle.closest(".group").dataset.group;
+    dash.collapsed = dash.collapsed.includes(key) ? dash.collapsed.filter(k => k !== key) : [...dash.collapsed, key];
+    render(); return saveDash();
+  }
+  openCard(e);
+});
+$("#board").addEventListener("keydown", e => { if (e.key === "Enter") openCard(e); });
+
+function openCard(e) {
   const el = e.target.closest(".card");
-  if (!el || (e.type === "keydown" && e.key !== "Enter")) return;
+  if (!el) return;
   openId = +el.dataset.id; renderProduct(); $("#product").showModal();
 }
-$("#grid").addEventListener("click", cardOpen);
-$("#grid").addEventListener("keydown", cardOpen);
+
+// ---------- drag to arrange ----------
+
+function dropTarget(e) {
+  const group = e.target.closest(".group");
+  if (!drag || !group) return null;
+  if (drag.group != null) return group.dataset.group !== drag.group ? { el: group, group } : null;
+  const over = e.target.closest(".card");
+  if (over && +over.dataset.id === drag.card) return null;
+  return { el: over || group, group, card: over };
+}
+
+const clearDrop = () => document.querySelectorAll(".drop").forEach(el => el.classList.remove("drop"));
+
+$("#board").addEventListener("dragstart", e => {
+  const el = e.target.closest?.(".group .card, .group .group-head");
+  if (!el) return;
+  const key = el.closest(".group").dataset.group;
+  drag = el.classList.contains("card") ? { card: +el.dataset.id, from: key } : { group: key };
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", "");
+});
+$("#board").addEventListener("dragover", e => {
+  const target = dropTarget(e);
+  clearDrop();
+  if (target) { e.preventDefault(); target.el.classList.add("drop"); }
+});
+$("#board").addEventListener("dragend", () => { drag = null; clearDrop(); });
+
+$("#board").addEventListener("drop", e => {
+  const target = dropTarget(e);
+  clearDrop();
+  if (!target) return;
+  e.preventDefault();
+  const to = target.group.dataset.group;
+  if (drag.group != null) {
+    const order = groupKeys().filter(k => k !== drag.group);
+    order.splice(order.indexOf(to), 0, drag.group);
+    dash.order = order; drag = null; render();
+    return saveDash();
+  }
+  const p = products.find(x => x.id === drag.card), rest = products.filter(x => x !== p), from = drag.from;
+  let index = rest.length;
+  if (target.card) index = rest.findIndex(x => x.id === +target.card.dataset.id);
+  else { const last = rest.findLastIndex(x => inGroup(x, to)); if (last >= 0) index = last + 1; }
+  rest.splice(index, 0, p);
+  products = rest; drag = null;
+  if (to !== from) {
+    // Moving between groups swaps the tag the product was dragged out of for the new one
+    p.tags = [...new Set([...p.tags.filter(t => t !== from), ...(to ? [to] : [])])];
+    api(`/products/${p.id}`, "PATCH", { tags: p.tags }).catch(err => toast(err.message));
+  }
+  render();
+  api("/products/order", "POST", { ids: products.map(x => x.id) }).catch(err => toast(err.message));
+});
+
+$("#open-customize").addEventListener("click", () => {
+  const f = $("#customize-form");
+  for (const key of ["stats", ...SMART.map(s => s[0])]) f[key].checked = !dash.hidden.includes(key);
+  $("#customize").showModal();
+});
+$("#customize-form").addEventListener("submit", e => {
+  e.preventDefault();
+  dash.hidden = ["stats", ...SMART.map(s => s[0])].filter(key => !e.target[key].checked);
+  $("#customize").close(); render(); saveDash();
+});
 
 // ---------- product detail ----------
 
 function renderProduct() {
   const p = products.find(x => x.id === openId);
   if (!p) return $("#product").close();
-  const d = derive(p), multi = p.urls.length > 1;
-  const lines = multi ? p.urls.map((u, i) => ({ points: u.history, color: COLORS[i % COLORS.length] }))
+  const d = derive(p), multi = p.urls.length > 1, unit = esc(p.unit_label || "unit");
+  const lines = multi ? p.urls.map((u, i) => ({ points: u.history.map(([t, v]) => [t, v / (u.units || 1)]), color: COLORS[i % COLORS.length] }))
     : [{ points: d.series, color: "var(--accent)" }];
   const first = d.series[0];
   const sources = p.urls.map((u, i) => `<tr>
       <td>${multi ? `<span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>` : ""}<a href="${esc(u.url)}" target="_blank" rel="noopener noreferrer">${esc(u.store_name)}</a>
         ${u.last_error ? `<div class="error">${esc(u.last_error)}</div>` : ""}</td>
       <td class="num">${money(u.price, u.currency)}${u === d.best && multi ? " ★" : ""}</td>
+      <td><input type="number" min="0.001" step="any" value="${u.units || 1}" data-units="${u.id}" aria-label="Pack size"></td>
+      ${d.usesUnits ? `<td class="num">${u.price != null ? money(unitPrice(u), u.currency) : "—"}</td>` : ""}
       <td>${u.availability ? `<span class="badge ${u.availability}">${AVAILABILITY[u.availability]}</span>` : ""}</td>
       <td class="sub">${ago(u.last_checked)}</td>
       <td><button type="button" class="small" data-remove="${u.id}" title="Remove this source">✕</button></td>
@@ -400,7 +588,7 @@ function renderProduct() {
   const interval = INTERVALS.some(i => i[0] === p.interval_minutes) ? INTERVALS : [...INTERVALS, [p.interval_minutes, `${p.interval_minutes} minutes`]];
   $("#product").innerHTML = `
     <h2>${esc(p.name || "Untitled product")}</h2>
-    <div class="price-row"><span class="price">${money(d.best?.price, d.currency)}</span>${availabilityBadge(d.soldOut ? d.best.availability : null)}
+    <div class="price-row"><span class="price">${money(d.price, d.currency)}${perUnit(p, d)}</span>${availabilityBadge(d.soldOut ? d.best.availability : null)}
       ${d.good ? `<span class="badge down">Good to buy</span>` : ""}</div>
     <div class="stats">
       <div>Lowest<b>${money(d.min, d.currency)}</b></div><div>Highest<b>${money(d.max, d.currency)}</b></div>
@@ -408,19 +596,22 @@ function renderProduct() {
     </div>
     ${first ? `<div class="big">${chart(lines, p.target_price)}<div class="axis"><span>${new Date(first[0] * 1000).toLocaleDateString()}</span><span>now</span></div></div>` : ""}
     <h3>Sources</h3>
-    ${p.urls.length ? `<table><tr><th>Store</th><th>Price</th><th>Availability</th><th>Checked</th><th></th></tr>${sources}</table>` : `<p class="sub">No URLs. Add one below.</p>`}
+    ${p.urls.length ? `<div class="scroll"><table><tr><th>Store</th><th>Price</th><th>Pack size</th>${d.usesUnits ? `<th>Per ${unit}</th>` : ""}<th>Availability</th><th>Checked</th><th></th></tr>${sources}</table></div>` : `<p class="sub">No URLs. Add one below.</p>`}
     <form class="bar" id="add-source" style="margin-top:10px">
       <input name="url" placeholder="Add another store's URL for this product to compare…" autocomplete="off" required>
       <button>Add</button>
+      ${features.search ? `<button type="button" id="find-sources">Find stores</button>` : ""}
     </form>
+    <div id="source-results"></div>
     <form id="product-form">
       <h3>Settings</h3>
+      <label>Name <input name="name" value="${esc(p.name)}"></label>
       <div class="row">
-        <label>Name <input name="name" value="${esc(p.name)}"></label>
         <label>Tags (comma separated) <input name="tags" value="${esc(p.tags.join(", "))}" placeholder="e.g. tech, gifts"></label>
+        <label>Unit name, for comparing pack sizes <input name="unit_label" value="${esc(p.unit_label)}" placeholder="e.g. tablet, bag, litre"></label>
       </div>
       <div class="row3">
-        <label>Target price <input name="target_price" type="number" step="0.01" min="0.01" value="${p.target_price ?? ""}" placeholder="None"></label>
+        <label>Target price${d.usesUnits ? ` (per ${unit})` : ""} <input name="target_price" type="number" step="any" min="0.001" value="${p.target_price ?? ""}" placeholder="None"></label>
         <label>Only alert on drops of at least (%) <input name="drop_percent" type="number" step="0.1" min="0" max="100" value="${p.drop_percent}"></label>
         <label>Check every <select name="interval_minutes">${interval.map(([v, l]) => `<option value="${v}" ${v === p.interval_minutes ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       </div>
@@ -437,15 +628,15 @@ function renderProduct() {
     </form>`;
 }
 
+const addSource = async url => setProduct(await api(`/products/${openId}/urls`, "POST", { url }));
+
 $("#product").addEventListener("submit", e => {
   e.preventDefault();
   const f = e.target, btn = f.querySelector("button:not([type=button])");
-  if (f.id === "add-source") {
-    return busy(btn, "Fetching…", async () => setProduct(await api(`/products/${openId}/urls`, "POST", { url: f.url.value })));
-  }
+  if (f.id === "add-source") return busy(btn, "Fetching…", () => addSource(f.url.value));
   busy(btn, "Saving…", async () => {
     setProduct(await api(`/products/${openId}`, "PATCH", {
-      name: f.name.value, tags: f.tags.value.split(","),
+      name: f.elements.name.value, unit_label: f.unit_label.value, tags: f.tags.value.split(","),
       target_price: f.target_price.value === "" ? null : +f.target_price.value,
       drop_percent: +f.drop_percent.value || 0, interval_minutes: +f.interval_minutes.value,
       notify_on_drop: f.notify_on_drop.checked, notify_back_in_stock: f.notify_back_in_stock.checked,
@@ -455,12 +646,27 @@ $("#product").addEventListener("submit", e => {
   });
 });
 
+$("#product").addEventListener("change", async e => {
+  const id = e.target.dataset.units;
+  if (!id) return;
+  try { setProduct(await api(`/urls/${id}`, "PATCH", { units: +e.target.value })); } catch (err) { toast(err.message); }
+});
+
 $("#product").addEventListener("click", e => {
   const btn = e.target.closest("button");
   if (!btn) return;
   if (btn.dataset.remove) {
     if (confirm("Remove this source and its price history?"))
       busy(btn, "…", async () => setProduct(await api(`/urls/${btn.dataset.remove}`, "DELETE")));
+  } else if (btn.dataset.url) {
+    busy(btn, "Fetching…", () => addSource(btn.dataset.url));
+  } else if (btn.id === "find-sources") {
+    const p = products.find(x => x.id === openId);
+    if (!p.name) return toast("Give the product a name first");
+    busy(btn, "Searching…", async () => {
+      const results = await api("/search?q=" + encodeURIComponent(p.name));
+      $("#source-results").innerHTML = `<div class="results" style="margin-top:10px">${resultsHtml(results, "Add")}</div>`;
+    });
   } else if (btn.id === "check-product") {
     busy(btn, "Checking…", async () => { setProduct(await api(`/products/${openId}/check`, "POST")); loadAlerts(); });
   } else if (btn.id === "delete-product") {
@@ -481,6 +687,7 @@ function renderStores() {
     <tr><th>Name</th><th>Domains</th><th>Currency</th><th>Fetch</th><th>Custom rules</th><th>URLs</th><th></th></tr>
     ${stores.map(s => {
       const custom = FIELDS.filter(f => s.strategies[f] && s.strategies[f].type !== "auto");
+      if (s.ai_extract) custom.push("AI fallback");
       return `<tr><td><b>${esc(s.name)}</b></td><td>${esc(s.domains.join(", "))}</td><td>${esc(s.currency || "—")}</td>
         <td>${esc(s.service === "auto" && s.last_method ? `auto (${s.last_method})` : s.service)}</td>
         <td>${custom.length ? esc(custom.join(", ")) : `<span class="sub">auto-detect</span>`}</td><td>${s.url_count}</td>
@@ -492,35 +699,59 @@ async function loadStores() {
   try { stores = await api("/stores"); renderStores(); } catch (e) { toast(e.message); }
 }
 
+function strategyRows(strategies) {
+  const opts = [["auto", "Auto"], ["schema", "Schema.org"], ["selector", "CSS selector"], ["regex", "Regex"], ["json", "JSON path"]];
+  $("#strategies").innerHTML = FIELDS.map(field => {
+    const st = strategies?.[field] || { type: "auto", value: "" };
+    return `<div class="strategy"><span>${field[0].toUpperCase() + field.slice(1)}</span>
+      <select name="${field}_type">${opts.map(([v, l]) => `<option value="${v}" ${v === st.type ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <input name="${field}_value" value="${esc(st.value)}" spellcheck="false" placeholder="Selector, pattern or path"></div>`;
+  }).join("");
+}
+
 function openStore(s) {
   storeId = s?.id ?? null;
   const f = $("#store-form");
   f.reset();
-  f.name.value = s?.name || "";
+  f.elements.name.value = s?.name || "";
   f.domains.value = (s?.domains || []).join(", ");
   f.currency.value = s?.currency || "";
   f.service.value = s?.service || "auto";
   f.cookies.value = s?.cookies || "";
   f.missing_price_oos.checked = !!s?.missing_price_oos;
-  $("#strategies").innerHTML = FIELDS.map(field => {
-    const st = s?.strategies[field] || { type: "auto", value: "" };
-    const opts = [["auto", "Auto"], ["schema", "Schema.org"], ["selector", "CSS selector"], ["regex", "Regex"], ["json", "JSON path"]];
-    return `<div class="strategy"><span>${field[0].toUpperCase() + field.slice(1)}</span>
-      <select name="${field}_type">${opts.map(([v, l]) => `<option value="${v}" ${v === st.type ? "selected" : ""}>${l}</option>`).join("")}</select>
-      <input name="${field}_value" value="${esc(st.value)}" spellcheck="false" placeholder="Selector, pattern or path"></div>`;
-  }).join("");
+  f.ai_extract.checked = !!s?.ai_extract;
+  strategyRows(s?.strategies);
   $("#test-result").innerHTML = "";
   $("#delete-store").hidden = !s;
+  f.querySelectorAll("[data-needs=ai]").forEach(el => el.hidden = !features.ai);
   $("#store").showModal();
 }
 
 function storeBody() {
   const f = $("#store-form");
   return {
-    name: f.name.value, domains: f.domains.value.split(","), currency: f.currency.value || null,
+    name: f.elements.name.value, domains: f.domains.value.split(","), currency: f.currency.value || null,
     service: f.service.value, cookies: f.cookies.value, missing_price_oos: f.missing_price_oos.checked,
+    ai_extract: f.ai_extract.checked,
     strategies: Object.fromEntries(FIELDS.map(k => [k, { type: f[k + "_type"].value, value: f[k + "_value"].value }])),
   };
+}
+
+function testBody() {
+  const f = $("#store-form"), url = f.test_url.value.trim();
+  if (!url) { toast("Enter a product URL from this store first"); return null; }
+  return { ...storeBody(), name: f.elements.name.value || "test", url };
+}
+
+function showExtracted(r, note = "") {
+  const currency = $("#store-form").currency.value || r.currency;
+  const row = (label, value) => `<tr><th>${label}</th><td>${value ?? `<span class="sub">not found</span>`}</td></tr>`;
+  $("#test-result").innerHTML = note + (r.error ? `<div class="error" style="margin-top:10px">${esc(r.error)}</div>` : "") + `<table style="margin-top:8px">
+    ${row("Title", r.title && esc(r.title))}
+    ${row("Price", r.price != null ? esc(money(r.price, currency)) + ` <span class="sub">via ${esc(r.source)}</span>` : null)}
+    ${row("Availability", r.availability && AVAILABILITY[r.availability])}
+    ${row("Image", r.image && `<img src="${esc(r.image)}" alt="" referrerpolicy="no-referrer" style="height:48px">`)}
+    ${r.method ? row("Fetched with", esc(r.method)) : ""}</table>`;
 }
 
 $("#new-store").addEventListener("click", () => openStore(null));
@@ -544,17 +775,17 @@ $("#delete-store").addEventListener("click", e => {
 });
 
 $("#test-store").addEventListener("click", e => {
-  const f = $("#store-form");
-  if (!f.test_url.value.trim()) return toast("Enter a product URL to test");
-  busy(e.target, "Testing…", async () => {
-    const r = await api("/stores/test", "POST", { ...storeBody(), name: f.name.value || "test", url: f.test_url.value });
-    const row = (label, value) => `<tr><th>${label}</th><td>${value ?? `<span class="sub">not found</span>`}</td></tr>`;
-    $("#test-result").innerHTML = (r.error ? `<div class="error" style="margin-top:10px">${esc(r.error)}</div>` : "") + `<table style="margin-top:8px">
-      ${row("Title", r.title && esc(r.title))}
-      ${row("Price", r.price != null ? esc(money(r.price, f.currency.value || r.currency)) + ` <span class="sub">via ${esc(r.source)}</span>` : null)}
-      ${row("Availability", r.availability && AVAILABILITY[r.availability])}
-      ${row("Image", r.image && `<img src="${esc(r.image)}" alt="" referrerpolicy="no-referrer" style="height:48px">`)}
-      ${row("Fetched with", r.method && esc(r.method))}</table>`;
+  const body = testBody();
+  if (body) busy(e.target, "Testing…", async () => showExtracted(await api("/stores/test", "POST", body)));
+});
+
+$("#suggest-store").addEventListener("click", e => {
+  const body = testBody();
+  if (body) busy(e.target, "Asking AI…", async () => {
+    const r = await api("/stores/suggest", "POST", body);
+    strategyRows(r.strategies);
+    showExtracted(r.preview, `<p class="hint" style="margin:10px 0 0">AI filled in the rules above; this is what they extract. Nothing is saved until you click Save.${
+      r.truncated ? " The page was too long to send in full, so the rules are based on the first part of it." : ""}</p>`);
   });
 });
 
@@ -578,14 +809,35 @@ $("#open-alerts").addEventListener("click", async () => {
   if (alerts.some(a => !a.read)) { await api("/notifications/read", "POST").catch(() => {}); loadAlerts(); }
 });
 
+function applySettings(s) {
+  features = s.features;
+  dash = { order: [], collapsed: [], hidden: [], ...s.dashboard };
+  $("#url").placeholder = features.search ? "Paste a product URL, or type a product name to search…" : "Paste a product URL from any site…";
+}
+
+function aiPlaceholders() {
+  const f = $("#settings-form"), provider = f.ai_provider.value;
+  f.ai_model.placeholder = AI_MODELS[provider] || "";
+  f.ai_base_url.placeholder = provider === "ollama" ? "http://host.docker.internal:11434/v1" : "Default";
+}
+$("#settings-form").ai_provider.addEventListener("change", aiPlaceholders);
+
 $("#open-settings").addEventListener("click", async () => {
   try {
-    $("#settings-form").notify_urls.value = (await api("/settings")).notify_urls;
+    const s = await api("/settings"), f = $("#settings-form");
+    for (const key of ["notify_urls", "searxng_url", "ai_provider", "ai_model", "ai_base_url"]) f[key].value = s[key];
+    f.ai_api_key.value = "";
+    f.ai_api_key.placeholder = s.ai_key_set ? "Saved — leave blank to keep" : "";
+    aiPlaceholders();
     $("#settings").showModal();
   } catch (err) { toast(err.message); }
 });
 
-const saveSettings = () => api("/settings", "PUT", { notify_urls: $("#settings-form").notify_urls.value });
+async function saveSettings() {
+  const f = $("#settings-form");
+  applySettings(await api("/settings", "PUT", Object.fromEntries(
+    ["notify_urls", "searxng_url", "ai_provider", "ai_model", "ai_base_url", "ai_api_key"].map(k => [k, f[k].value]))));
+}
 
 $("#settings-form").addEventListener("submit", e => {
   e.preventDefault();
@@ -605,6 +857,7 @@ document.addEventListener("click", e => {
 function route() {
   const view = location.hash === "#/stores" ? "stores" : "dashboard";
   $("#dashboard").hidden = view !== "dashboard"; $("#stores").hidden = view !== "stores";
+  $("#open-customize").hidden = view !== "dashboard";
   document.querySelectorAll("nav a").forEach(a => a.classList.toggle("on", a.dataset.view === view));
   if (view === "stores") loadStores();
 }
@@ -615,8 +868,9 @@ async function load() {
   loadAlerts();
 }
 
-route(); load();
-setInterval(() => { if (!document.querySelector("dialog[open]")) load(); }, 60000);
+route();
+api("/settings").then(applySettings).catch(e => toast(e.message)).then(load);
+setInterval(() => { if (!document.querySelector("dialog[open]") && !drag) load(); }, 60000);
 </script>
 </body>
 </html>

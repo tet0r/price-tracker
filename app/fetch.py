@@ -3,6 +3,7 @@ import os
 
 import httpx
 
+from . import ai
 from .extract import UNAVAILABLE, Extracted, extract
 
 USE_BROWSER = os.environ.get("USE_BROWSER", "true").lower() in ("1", "true", "yes")
@@ -75,13 +76,7 @@ async def fetch_browser(url: str, cookies: str = "") -> str:
             await browser.close()
 
 
-async def scrape(url: str, store: dict) -> tuple[Extracted, str]:
-    """Fetch and extract using a store's config. Returns (extracted, method_used).
-
-    A result counts when it has a price, or when the page is recognisably a
-    product that can't be bought right now (so there may be no price to find).
-    """
-    fetchers = {"http": fetch_http, "browser": fetch_browser}
+def _fetch_order(store: dict) -> list[str]:
     service = store.get("service") or "auto"
     if service == "auto":
         order = ["browser", "http"] if store.get("last_method") == "browser" else ["http", "browser"]
@@ -91,18 +86,46 @@ async def scrape(url: str, store: dict) -> tuple[Extracted, str]:
         order = [m for m in order if m != "browser"]
     if not order:
         raise ScrapeError("browser fetching is disabled (USE_BROWSER=false)")
+    return order
 
-    errors, partial = [], Extracted()
-    for method in order:
+
+async def _fetch(method: str, url: str, store: dict) -> str:
+    """Fetch a page, turning any failure into a ScrapeError with a readable reason."""
+    fetcher = fetch_http if method == "http" else fetch_browser
+    try:
+        return await fetcher(url, store.get("cookies") or "")
+    except httpx.HTTPStatusError as e:
+        raise ScrapeError(f"{method}: site returned HTTP {e.response.status_code}")
+    except Exception as e:
+        detail = str(e).splitlines()[0][:150] if str(e) else "failed"
+        raise ScrapeError(f"{method}: {type(e).__name__}: {detail}")
+
+
+async def fetch_body(url: str, store: dict) -> tuple[str, str]:
+    """Return (body, method) from the first fetch method that works for this store."""
+    errors = []
+    for method in _fetch_order(store):
         try:
-            body = await fetchers[method](url, store.get("cookies") or "")
-        except httpx.HTTPStatusError as e:
-            errors.append(f"{method}: site returned HTTP {e.response.status_code}")
+            return await _fetch(method, url, store), method
+        except ScrapeError as e:
+            errors.append(str(e))
+    raise ScrapeError("; ".join(errors))
+
+
+async def scrape(url: str, store: dict) -> tuple[Extracted, str]:
+    """Fetch and extract using a store's config. Returns (extracted, method_used).
+
+    A result counts when it has a price, or when the page is recognisably a
+    product that can't be bought right now (so there may be no price to find).
+    """
+    errors, partial, last = [], Extracted(), None
+    for method in _fetch_order(store):
+        try:
+            body = await _fetch(method, url, store)
+        except ScrapeError as e:
+            errors.append(str(e))
             continue
-        except Exception as e:
-            detail = str(e).splitlines()[0][:150] if str(e) else "failed"
-            errors.append(f"{method}: {type(e).__name__}: {detail}")
-            continue
+        last = (body, method)
         found = extract(body, url, store.get("strategies"))
         if not found.price and found.name and store.get("missing_price_oos"):
             found.availability = "out_of_stock"
@@ -111,4 +134,16 @@ async def scrape(url: str, store: dict) -> tuple[Extracted, str]:
         partial.name = partial.name or found.name
         partial.image = partial.image or found.image
         errors.append(f"{method}: no price found on page")
+
+    # Last resort, only fills a genuine gap: let AI read the page the rules couldn't
+    if last and store.get("ai_extract") and ai.enabled():
+        try:
+            found = await ai.extract_price(last[0], url)
+        except ai.AIError as e:
+            errors.append(f"ai: {e}")
+        else:
+            if found:
+                found.name, found.image = partial.name or found.name, partial.image
+                return found, last[1]
+            errors.append("ai: not confident about the price")
     raise ScrapeError("; ".join(errors), partial)
