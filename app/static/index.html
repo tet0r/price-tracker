@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Price Tracker</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --text: #1a1d23; --muted: #6b7280; --line: #e3e5ea;
+    --accent: #2563eb; --down: #15803d; --down-bg: #dcfce7; --up: #b91c1c; --up-bg: #fee2e2;
+    --warn: #92400e; --warn-bg: #fef3c7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318; --card: #1b1e25; --text: #e8eaee; --muted: #9299a6; --line: #2c313b;
+      --accent: #6ea0ff; --down: #4ade80; --down-bg: #12301f; --up: #f87171; --up-bg: #3a1717;
+      --warn: #fbbf24; --warn-bg: #3a2c0b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1140px; margin: 0 auto; padding: 20px 16px 60px; }
+  header { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0 12px 0 0; }
+  h2 { margin: 0 0 14px; font-size: 17px; }
+  h3 { margin: 18px 0 8px; font-size: 14px; }
+  nav { display: flex; gap: 4px; flex: 1; }
+  nav a { color: var(--muted); text-decoration: none; padding: 6px 11px; border-radius: 8px; font-weight: 600; }
+  nav a.on { color: var(--text); background: var(--card); border: 1px solid var(--line); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  input, select, textarea { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+         padding: 8px 10px; width: 100%; min-width: 0; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button { border: 1px solid var(--line); background: var(--card); border-radius: 8px;
+           padding: 8px 13px; cursor: pointer; white-space: nowrap; }
+  button:hover { border-color: var(--muted); }
+  button:disabled { opacity: .55; cursor: wait; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  @media (prefers-color-scheme: dark) { button.primary { color: #0b1020; } }
+  button.danger { color: var(--up); }
+  button.small { padding: 3px 9px; font-size: 13px; }
+  .count { background: var(--up); color: #fff; border-radius: 99px; padding: 0 6px; font-size: 12px; margin-left: 4px; }
+  .bar { display: flex; gap: 8px; }
+  .bar input { flex: 1; }
+  #add { margin-bottom: 14px; }
+  #add input { padding: 12px 14px; }
+  #chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  .chip { border-radius: 99px; padding: 4px 12px; font-size: 13.5px; }
+  .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+          display: flex; flex-direction: column; gap: 9px; min-width: 0; cursor: pointer; text-align: left; }
+  .card:hover { border-color: var(--muted); }
+  .card.paused { opacity: .6; }
+  .top { display: flex; gap: 11px; min-width: 0; }
+  .top img { width: 56px; height: 56px; object-fit: contain; border-radius: 8px; background: #fff; flex: none; }
+  .top > div { min-width: 0; }
+  .name { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          overflow: hidden; overflow-wrap: anywhere; }
+  .sub, .foot { color: var(--muted); font-size: 13px; }
+  .price-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .price { font-size: 25px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .badge { font-size: 12.5px; font-weight: 600; padding: 2px 8px; border-radius: 99px; white-space: nowrap;
+           background: var(--bg); color: var(--muted); }
+  .badge.down, .badge.in_stock { color: var(--down); background: var(--down-bg); }
+  .badge.up, .badge.out_of_stock, .badge.discontinued { color: var(--up); background: var(--up-bg); }
+  .badge.pre_order, .badge.back_order, .badge.warn { color: var(--warn); background: var(--warn-bg); }
+  .error { color: var(--warn); background: var(--warn-bg); border-radius: 8px; padding: 7px 10px;
+           font-size: 13px; overflow-wrap: anywhere; }
+  svg.chart { width: 100%; height: 42px; display: block; }
+  svg.chart path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+  svg.chart line { stroke: var(--down); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+  .foot { margin-top: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .foot span:first-child { flex: 1; }
+  .empty { text-align: center; color: var(--muted); padding: 50px 20px; grid-column: 1 / -1; }
+  dialog { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 14px;
+           padding: 20px; width: min(680px, calc(100vw - 20px)); max-height: calc(100vh - 20px); }
+  dialog::backdrop { background: rgba(0, 0, 0, .5); }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 11px; }
+  label > input, label > select, label > textarea { margin-top: 4px; color: var(--text); }
+  label.check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
+  label.check input { width: auto; margin: 0; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 520px) { .row, .row3 { grid-template-columns: 1fr; gap: 0; } }
+  .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+  .big svg.chart { height: 130px; }
+  .axis { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .stats { display: flex; gap: 18px; flex-wrap: wrap; margin: 6px 0 10px; }
+  .stats div { font-size: 12.5px; color: var(--muted); }
+  .stats b { display: block; font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .hint { font-size: 12.5px; color: var(--muted); margin: -4px 0 11px; }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+  th, td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--line); vertical-align: middle; overflow-wrap: anywhere; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+  td a { color: inherit; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 6px 16px 10px; overflow-x: auto; }
+  .strategy { display: grid; grid-template-columns: 92px 150px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 13.5px; }
+  .note { border-bottom: 1px solid var(--line); padding: 9px 0; }
+  .note.unread b::before { content: "● "; color: var(--accent); }
+  .note div { font-size: 13px; color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; }
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text);
+           color: var(--bg); padding: 10px 16px; border-radius: 10px; max-width: 90vw; display: none; z-index: 10; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Price Tracker</h1>
+    <nav><a href="#/" data-view="dashboard">Products</a><a href="#/stores" data-view="stores">Stores</a></nav>
+    <button id="open-alerts">Alerts<span class="count" id="unread" hidden></span></button>
+    <button id="open-settings">Settings</button>
+  </header>
+
+  <section id="dashboard">
+    <form id="add" class="bar">
+      <input id="url" type="text" placeholder="Paste a product URL from any site…" autocomplete="off" required>
+      <button class="primary">Track</button>
+    </form>
+    <div id="chips"></div>
+    <div id="grid"></div>
+  </section>
+
+  <section id="stores" hidden>
+    <div class="bar" style="margin-bottom:14px">
+      <p class="sub spacer" style="margin:0">A store holds the scraping rules for a site. One is created automatically the first time you add a URL from a new domain.</p>
+      <button id="new-store">Add store</button>
+    </div>
+    <div class="panel" id="store-list"></div>
+  </section>
+</main>
+
+<dialog id="product"></dialog>
+
+<dialog id="store">
+  <form id="store-form">
+    <h2>Store</h2>
+    <div class="row">
+      <label>Name <input name="name" required></label>
+      <label>Domains (comma separated) <input name="domains" placeholder="example.com, example.co.uk" spellcheck="false"></label>
+    </div>
+    <div class="row">
+      <label>Currency <input name="currency" placeholder="Auto-detect (e.g. USD)" maxlength="3" spellcheck="false"></label>
+      <label>Fetch pages with
+        <select name="service">
+          <option value="auto">Auto (HTTP, then browser if needed)</option>
+          <option value="http">HTTP request only</option>
+          <option value="browser">Headless browser (JavaScript sites)</option>
+        </select>
+      </label>
+    </div>
+    <h3>Extraction strategies</h3>
+    <div id="strategies"></div>
+    <p class="hint"><b>Auto</b> tries schema.org data, meta tags, then common price elements.
+      CSS: <code>.price</code> or <code>meta[property="og:price:amount"]|content</code> for an attribute.
+      Regex: first capture group, e.g. <code>"price":\s*"(.*?)"</code>. JSON path: <code>product.price</code>.</p>
+    <label>Cookies sent with each request (optional) <input name="cookies" placeholder="name=value; other=value" spellcheck="false"></label>
+    <label class="check"><input name="missing_price_oos" type="checkbox"> Treat a missing price as out of stock</label>
+    <h3>Test</h3>
+    <div class="bar">
+      <input name="test_url" placeholder="Product URL from this store" spellcheck="false">
+      <button type="button" id="test-store">Test</button>
+    </div>
+    <div id="test-result"></div>
+    <div class="actions">
+      <button type="button" class="danger" id="delete-store">Delete</button>
+      <span class="spacer"></span>
+      <button type="button" data-close>Cancel</button>
+      <button class="primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="alerts">
+  <h2>Alerts</h2>
+  <div id="alert-list"></div>
+  <div class="actions"><span class="spacer"></span><button data-close>Close</button></div>
+</dialog>
+
+<dialog id="settings">
+  <form id="settings-form">
+    <h2>Notification services</h2>
+    <label>Apprise URLs, one per line
+      <textarea name="notify_urls" rows="4" spellcheck="false" placeholder="ntfy://ntfy.sh/my-topic&#10;discord://webhook_id/webhook_token"></textarea>
+    </label>
+    <p class="hint">Alerts always appear in-app. Add URLs to also send them to ntfy, Discord, Telegram, Gotify, Pushover, Slack, email and more:
+      <code>ntfy://ntfy.sh/topic</code> <code>tgram://bottoken/chatid</code> <code>gotify://host/token</code> <code>mailtos://user:pass@gmail.com</code></p>
+    <div class="actions">
+      <button type="button" id="test-notify">Send test</button>
+      <span class="spacer"></span>
+      <button type="button" data-close>Cancel</button>
+      <button class="primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const AVAILABILITY = { in_stock: "In stock", pre_order: "Pre-order", back_order: "Back order", out_of_stock: "Out of stock", discontinued: "Discontinued" };
+const UNAVAILABLE = ["out_of_stock", "discontinued"];
+const COLORS = ["#2563eb", "#d97706", "#9333ea", "#0d9488", "#db2777", "#65a30d"];
+const INTERVALS = [[5, "5 minutes"], [15, "15 minutes"], [30, "30 minutes"], [60, "1 hour"], [180, "3 hours"], [360, "6 hours"], [720, "12 hours"], [1440, "24 hours"]];
+const FIELDS = ["title", "price", "image", "availability"];
+let products = [], stores = [], filter = "all", openId = null, storeId = null;
+
+async function api(path, method = "GET", body) {
+  const res = await fetch("/api" + path, {
+    method, headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const detail = Array.isArray(data.detail) ? data.detail.map(d => d.msg).join(", ") : data.detail;
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+// Runs an async action with the button disabled, surfacing any error as a toast
+async function busy(btn, label, fn) {
+  const text = btn.textContent;
+  btn.disabled = true; btn.textContent = label;
+  try { return await fn(); } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; btn.textContent = text; }
+}
+
+function toast(msg) {
+  const el = $("#toast");
+  el.textContent = msg; el.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = "none", 4500);
+}
+
+function money(v, cur) {
+  if (v == null) return "—";
+  try { if (cur) return new Intl.NumberFormat(undefined, { style: "currency", currency: cur }).format(v); } catch {}
+  return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function ago(ts) {
+  if (!ts) return "never";
+  const m = Math.floor((Date.now() / 1000 - ts) / 60);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  if (m < 1440) return `${Math.floor(m / 60)}h ago`;
+  return `${Math.floor(m / 1440)}d ago`;
+}
+
+// Lowest price across all sources over time, as [timestamp, price] steps
+function bestSeries(urls) {
+  const events = urls.flatMap((u, i) => u.history.map(([t, v]) => [t, i, v])).sort((a, b) => a[0] - b[0]);
+  const current = {}, out = [];
+  for (const [t, i, v] of events) {
+    current[i] = v;
+    const best = Math.min(...Object.values(current)), last = out.at(-1);
+    if (last && last[0] === t) last[1] = best;
+    else if (!last || last[1] !== best) out.push([t, best]);
+  }
+  return out;
+}
+
+function derive(p) {
+  const now = Date.now() / 1000;
+  const priced = p.urls.filter(u => u.price != null);
+  const buyable = priced.filter(u => !UNAVAILABLE.includes(u.availability));
+  const best = (buyable.length ? buyable : priced).reduce((a, b) => !a || b.price < a.price ? b : a, null);
+  const series = bestSeries(p.urls), values = series.map(s => s[1]);
+  const min = values.length ? Math.min(...values) : null, max = values.length ? Math.max(...values) : null;
+  let avg = null;
+  if (series.length) {
+    let sum = 0, total = 0;
+    series.forEach(([t, v], i) => { const d = (series[i + 1]?.[0] ?? now) - t; sum += v * d; total += d; });
+    avg = total > 0 ? sum / total : values[0];
+  }
+  const last = series.at(-1), prev = series.at(-2);
+  const pct = prev ? (last[1] - prev[1]) / prev[1] * 100 : null;
+  const soldOut = priced.length > 0 && !buyable.length;
+  return {
+    best, series, min, max, avg, pct, soldOut, currency: best?.currency,
+    good: !!best && !soldOut && ((p.target_price != null && best.price <= p.target_price)
+      || (series.length > 1 && best.price <= min && best.price < avg)),
+    dropped: pct != null && pct < 0 && now - last[0] < 7 * 86400,
+    attention: !p.urls.length || p.urls.some(u => u.last_error),
+  };
+}
+
+// Step chart: a price holds until the next recorded change, and the last one extends to now
+function chart(lines, target) {
+  lines = lines.filter(l => l.points.length);
+  if (!lines.length) return "";
+  const now = Date.now() / 1000, t0 = Math.min(...lines.map(l => l.points[0][0])), span = Math.max(now - t0, 1);
+  const vals = lines.flatMap(l => l.points.map(p => p[1])).concat(target ?? []);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+  const x = t => ((t - t0) / span * 100).toFixed(2), y = v => ((hi - v) / (hi - lo) * 100).toFixed(2);
+  const paths = lines.map(l => {
+    let d = `M${x(l.points[0][0])} ${y(l.points[0][1])}`;
+    for (const [t, v] of l.points.slice(1)) d += ` H${x(t)} V${y(v)}`;
+    return `<path d="${d} H100" style="stroke:${l.color}"/>`;
+  }).join("");
+  const line = target != null ? `<line x1="0" x2="100" y1="${y(target)}" y2="${y(target)}"/>` : "";
+  return `<svg class="chart" viewBox="0 0 100 100" preserveAspectRatio="none">${line}${paths}</svg>`;
+}
+
+const availabilityBadge = a => a && a !== "in_stock" ? `<span class="badge ${a}">${AVAILABILITY[a]}</span>` : "";
+
+// ---------- dashboard ----------
+
+function card(p) {
+  const d = derive(p);
+  let change = "";
+  if (d.pct) change = `<span class="badge ${d.pct < 0 ? "down" : "up"}">${d.pct < 0 ? "▼" : "▲"} ${Math.abs(d.pct).toFixed(1)}%</span>`;
+  const where = d.best ? esc(d.best.store_name) + (p.urls.length > 1 ? ` · ${p.urls.length} sources` : "") : "No price yet";
+  const foot = [];
+  if (p.paused) foot.push(`<span class="badge">Paused</span>`);
+  if (d.attention) foot.push(`<span class="badge warn">Needs attention</span>`);
+  if (d.good) foot.push(`<span class="badge down">Good to buy</span>`);
+  if (p.target_price != null) foot.push(`<span class="badge">Target ${money(p.target_price, d.currency)}</span>`);
+  return `<div class="card ${p.paused ? "paused" : ""}" data-id="${p.id}" tabindex="0" role="button">
+    <div class="top">
+      ${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
+      <div><div class="name">${esc(p.name || p.urls[0]?.url || "Untitled")}</div><div class="sub">${where}</div></div>
+    </div>
+    <div class="price-row"><span class="price">${money(d.best?.price, d.currency)}</span>${change}${availabilityBadge(d.soldOut ? d.best.availability : null)}</div>
+    ${chart([{ points: d.series, color: "var(--accent)" }], p.target_price)}
+    <div class="foot"><span>Checked ${ago(p.last_checked)}</span>${foot.join("")}</div>
+  </div>`;
+}
+
+function render() {
+  const derived = new Map(products.map(p => [p.id, derive(p)]));
+  const count = key => products.filter(p => derived.get(p.id)[key]).length;
+  const tags = [...new Set(products.flatMap(p => p.tags))].sort();
+  const chips = [["all", `All ${products.length}`], ["good", `Good to buy now ${count("good")}`],
+    ["dropped", `Recently dropped ${count("dropped")}`], ["attention", `Needs attention ${count("attention")}`],
+    ...tags.map(t => ["tag:" + t, "#" + t])];
+  if (!chips.some(c => c[0] === filter)) filter = "all";
+  $("#chips").innerHTML = products.length
+    ? chips.map(([k, label]) => `<button class="chip ${k === filter ? "on" : ""}" data-filter="${esc(k)}">${esc(label)}</button>`).join("") : "";
+  const shown = products.filter(p => filter === "all" ? true
+    : filter.startsWith("tag:") ? p.tags.includes(filter.slice(4)) : derived.get(p.id)[filter]);
+  $("#grid").innerHTML = shown.length ? shown.map(card).join("")
+    : `<div class="empty">${products.length ? "Nothing here right now." : "Nothing tracked yet. Paste a product URL above to start."}</div>`;
+}
+
+function setProduct(p) {
+  products = products.map(x => x.id === p.id ? p : x);
+  render();
+  if (openId === p.id) renderProduct();
+}
+
+$("#add").addEventListener("submit", e => {
+  e.preventDefault();
+  busy(e.target.querySelector("button"), "Fetching…", async () => {
+    const p = await api("/products", "POST", { url: $("#url").value });
+    products.unshift(p); $("#url").value = ""; filter = "all"; render();
+    if (p.urls.some(u => u.last_error)) { toast("Added, but no price was detected. Open it to see why."); }
+  });
+});
+
+$("#chips").addEventListener("click", e => {
+  const chip = e.target.closest("[data-filter]");
+  if (chip) { filter = chip.dataset.filter; render(); }
+});
+
+function cardOpen(e) {
+  const el = e.target.closest(".card");
+  if (!el || (e.type === "keydown" && e.key !== "Enter")) return;
+  openId = +el.dataset.id; renderProduct(); $("#product").showModal();
+}
+$("#grid").addEventListener("click", cardOpen);
+$("#grid").addEventListener("keydown", cardOpen);
+
+// ---------- product detail ----------
+
+function renderProduct() {
+  const p = products.find(x => x.id === openId);
+  if (!p) return $("#product").close();
+  const d = derive(p), multi = p.urls.length > 1;
+  const lines = multi ? p.urls.map((u, i) => ({ points: u.history, color: COLORS[i % COLORS.length] }))
+    : [{ points: d.series, color: "var(--accent)" }];
+  const first = d.series[0];
+  const sources = p.urls.map((u, i) => `<tr>
+      <td>${multi ? `<span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>` : ""}<a href="${esc(u.url)}" target="_blank" rel="noopener noreferrer">${esc(u.store_name)}</a>
+        ${u.last_error ? `<div class="error">${esc(u.last_error)}</div>` : ""}</td>
+      <td class="num">${money(u.price, u.currency)}${u === d.best && multi ? " ★" : ""}</td>
+      <td>${u.availability ? `<span class="badge ${u.availability}">${AVAILABILITY[u.availability]}</span>` : ""}</td>
+      <td class="sub">${ago(u.last_checked)}</td>
+      <td><button type="button" class="small" data-remove="${u.id}" title="Remove this source">✕</button></td>
+    </tr>`).join("");
+  const interval = INTERVALS.some(i => i[0] === p.interval_minutes) ? INTERVALS : [...INTERVALS, [p.interval_minutes, `${p.interval_minutes} minutes`]];
+  $("#product").innerHTML = `
+    <h2>${esc(p.name || "Untitled product")}</h2>
+    <div class="price-row"><span class="price">${money(d.best?.price, d.currency)}</span>${availabilityBadge(d.soldOut ? d.best.availability : null)}
+      ${d.good ? `<span class="badge down">Good to buy</span>` : ""}</div>
+    <div class="stats">
+      <div>Lowest<b>${money(d.min, d.currency)}</b></div><div>Highest<b>${money(d.max, d.currency)}</b></div>
+      <div>Average<b>${money(d.avg, d.currency)}</b></div><div>Checked<b>${ago(p.last_checked)}</b></div>
+    </div>
+    ${first ? `<div class="big">${chart(lines, p.target_price)}<div class="axis"><span>${new Date(first[0] * 1000).toLocaleDateString()}</span><span>now</span></div></div>` : ""}
+    <h3>Sources</h3>
+    ${p.urls.length ? `<table><tr><th>Store</th><th>Price</th><th>Availability</th><th>Checked</th><th></th></tr>${sources}</table>` : `<p class="sub">No URLs. Add one below.</p>`}
+    <form class="bar" id="add-source" style="margin-top:10px">
+      <input name="url" placeholder="Add another store's URL for this product to compare…" autocomplete="off" required>
+      <button>Add</button>
+    </form>
+    <form id="product-form">
+      <h3>Settings</h3>
+      <div class="row">
+        <label>Name <input name="name" value="${esc(p.name)}"></label>
+        <label>Tags (comma separated) <input name="tags" value="${esc(p.tags.join(", "))}" placeholder="e.g. tech, gifts"></label>
+      </div>
+      <div class="row3">
+        <label>Target price <input name="target_price" type="number" step="0.01" min="0.01" value="${p.target_price ?? ""}" placeholder="None"></label>
+        <label>Only alert on drops of at least (%) <input name="drop_percent" type="number" step="0.1" min="0" max="100" value="${p.drop_percent}"></label>
+        <label>Check every <select name="interval_minutes">${interval.map(([v, l]) => `<option value="${v}" ${v === p.interval_minutes ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      </div>
+      <label class="check"><input name="notify_on_drop" type="checkbox" ${p.notify_on_drop ? "checked" : ""}> Alert me when the price drops</label>
+      <label class="check"><input name="notify_back_in_stock" type="checkbox" ${p.notify_back_in_stock ? "checked" : ""}> Alert me when it's back in stock</label>
+      <label class="check"><input name="paused" type="checkbox" ${p.paused ? "checked" : ""}> Pause price checks</label>
+      <div class="actions">
+        <button type="button" class="danger" id="delete-product">Delete</button>
+        <button type="button" id="check-product">Check now</button>
+        <span class="spacer"></span>
+        <button type="button" data-close>Close</button>
+        <button class="primary">Save</button>
+      </div>
+    </form>`;
+}
+
+$("#product").addEventListener("submit", e => {
+  e.preventDefault();
+  const f = e.target, btn = f.querySelector("button:not([type=button])");
+  if (f.id === "add-source") {
+    return busy(btn, "Fetching…", async () => setProduct(await api(`/products/${openId}/urls`, "POST", { url: f.url.value })));
+  }
+  busy(btn, "Saving…", async () => {
+    setProduct(await api(`/products/${openId}`, "PATCH", {
+      name: f.name.value, tags: f.tags.value.split(","),
+      target_price: f.target_price.value === "" ? null : +f.target_price.value,
+      drop_percent: +f.drop_percent.value || 0, interval_minutes: +f.interval_minutes.value,
+      notify_on_drop: f.notify_on_drop.checked, notify_back_in_stock: f.notify_back_in_stock.checked,
+      paused: f.paused.checked,
+    }));
+    $("#product").close();
+  });
+});
+
+$("#product").addEventListener("click", e => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  if (btn.dataset.remove) {
+    if (confirm("Remove this source and its price history?"))
+      busy(btn, "…", async () => setProduct(await api(`/urls/${btn.dataset.remove}`, "DELETE")));
+  } else if (btn.id === "check-product") {
+    busy(btn, "Checking…", async () => { setProduct(await api(`/products/${openId}/check`, "POST")); loadAlerts(); });
+  } else if (btn.id === "delete-product") {
+    if (confirm("Stop tracking this product and delete its price history?"))
+      busy(btn, "Deleting…", async () => {
+        await api(`/products/${openId}`, "DELETE");
+        products = products.filter(x => x.id !== openId);
+        $("#product").close(); render();
+      });
+  }
+});
+$("#product").addEventListener("close", () => openId = null);
+
+// ---------- stores ----------
+
+function renderStores() {
+  $("#store-list").innerHTML = stores.length ? `<table>
+    <tr><th>Name</th><th>Domains</th><th>Currency</th><th>Fetch</th><th>Custom rules</th><th>URLs</th><th></th></tr>
+    ${stores.map(s => {
+      const custom = FIELDS.filter(f => s.strategies[f] && s.strategies[f].type !== "auto");
+      return `<tr><td><b>${esc(s.name)}</b></td><td>${esc(s.domains.join(", "))}</td><td>${esc(s.currency || "—")}</td>
+        <td>${esc(s.service === "auto" && s.last_method ? `auto (${s.last_method})` : s.service)}</td>
+        <td>${custom.length ? esc(custom.join(", ")) : `<span class="sub">auto-detect</span>`}</td><td>${s.url_count}</td>
+        <td><button class="small" data-store="${s.id}">Edit</button></td></tr>`;
+    }).join("")}</table>` : `<div class="empty">No stores yet. They're created as you add product URLs.</div>`;
+}
+
+async function loadStores() {
+  try { stores = await api("/stores"); renderStores(); } catch (e) { toast(e.message); }
+}
+
+function openStore(s) {
+  storeId = s?.id ?? null;
+  const f = $("#store-form");
+  f.reset();
+  f.name.value = s?.name || "";
+  f.domains.value = (s?.domains || []).join(", ");
+  f.currency.value = s?.currency || "";
+  f.service.value = s?.service || "auto";
+  f.cookies.value = s?.cookies || "";
+  f.missing_price_oos.checked = !!s?.missing_price_oos;
+  $("#strategies").innerHTML = FIELDS.map(field => {
+    const st = s?.strategies[field] || { type: "auto", value: "" };
+    const opts = [["auto", "Auto"], ["schema", "Schema.org"], ["selector", "CSS selector"], ["regex", "Regex"], ["json", "JSON path"]];
+    return `<div class="strategy"><span>${field[0].toUpperCase() + field.slice(1)}</span>
+      <select name="${field}_type">${opts.map(([v, l]) => `<option value="${v}" ${v === st.type ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <input name="${field}_value" value="${esc(st.value)}" spellcheck="false" placeholder="Selector, pattern or path"></div>`;
+  }).join("");
+  $("#test-result").innerHTML = "";
+  $("#delete-store").hidden = !s;
+  $("#store").showModal();
+}
+
+function storeBody() {
+  const f = $("#store-form");
+  return {
+    name: f.name.value, domains: f.domains.value.split(","), currency: f.currency.value || null,
+    service: f.service.value, cookies: f.cookies.value, missing_price_oos: f.missing_price_oos.checked,
+    strategies: Object.fromEntries(FIELDS.map(k => [k, { type: f[k + "_type"].value, value: f[k + "_value"].value }])),
+  };
+}
+
+$("#new-store").addEventListener("click", () => openStore(null));
+$("#store-list").addEventListener("click", e => {
+  const btn = e.target.closest("[data-store]");
+  if (btn) openStore(stores.find(s => s.id === +btn.dataset.store));
+});
+
+$("#store-form").addEventListener("submit", e => {
+  e.preventDefault();
+  busy(e.target.querySelector("button.primary"), "Saving…", async () => {
+    await api(storeId ? `/stores/${storeId}` : "/stores", storeId ? "PUT" : "POST", storeBody());
+    $("#store").close(); await loadStores(); toast("Store saved. It applies from the next check.");
+  });
+});
+
+$("#delete-store").addEventListener("click", e => {
+  if (confirm("Delete this store?")) busy(e.target, "Deleting…", async () => {
+    await api(`/stores/${storeId}`, "DELETE"); $("#store").close(); await loadStores();
+  });
+});
+
+$("#test-store").addEventListener("click", e => {
+  const f = $("#store-form");
+  if (!f.test_url.value.trim()) return toast("Enter a product URL to test");
+  busy(e.target, "Testing…", async () => {
+    const r = await api("/stores/test", "POST", { ...storeBody(), name: f.name.value || "test", url: f.test_url.value });
+    const row = (label, value) => `<tr><th>${label}</th><td>${value ?? `<span class="sub">not found</span>`}</td></tr>`;
+    $("#test-result").innerHTML = (r.error ? `<div class="error" style="margin-top:10px">${esc(r.error)}</div>` : "") + `<table style="margin-top:8px">
+      ${row("Title", r.title && esc(r.title))}
+      ${row("Price", r.price != null ? esc(money(r.price, f.currency.value || r.currency)) + ` <span class="sub">via ${esc(r.source)}</span>` : null)}
+      ${row("Availability", r.availability && AVAILABILITY[r.availability])}
+      ${row("Image", r.image && `<img src="${esc(r.image)}" alt="" referrerpolicy="no-referrer" style="height:48px">`)}
+      ${row("Fetched with", r.method && esc(r.method))}</table>`;
+  });
+});
+
+// ---------- alerts & settings ----------
+
+let alerts = [];
+async function loadAlerts() {
+  try {
+    alerts = await api("/notifications");
+    const unread = alerts.filter(a => !a.read).length;
+    $("#unread").textContent = unread; $("#unread").hidden = !unread;
+  } catch {}
+}
+
+$("#open-alerts").addEventListener("click", async () => {
+  await loadAlerts();
+  $("#alert-list").innerHTML = alerts.length ? alerts.map(a => `<div class="note ${a.read ? "" : "unread"}">
+      <b>${esc(a.title)}</b> <span class="sub">${ago(a.created_at)}</span><div>${esc(a.body)}</div></div>`).join("")
+    : `<p class="sub">No alerts yet. You'll see price drops, target prices reached and back-in-stock alerts here.</p>`;
+  $("#alerts").showModal();
+  if (alerts.some(a => !a.read)) { await api("/notifications/read", "POST").catch(() => {}); loadAlerts(); }
+});
+
+$("#open-settings").addEventListener("click", async () => {
+  try {
+    $("#settings-form").notify_urls.value = (await api("/settings")).notify_urls;
+    $("#settings").showModal();
+  } catch (err) { toast(err.message); }
+});
+
+const saveSettings = () => api("/settings", "PUT", { notify_urls: $("#settings-form").notify_urls.value });
+
+$("#settings-form").addEventListener("submit", e => {
+  e.preventDefault();
+  busy(e.target.querySelector("button.primary"), "Saving…", async () => { await saveSettings(); $("#settings").close(); toast("Saved"); });
+});
+
+$("#test-notify").addEventListener("click", e => busy(e.target, "Sending…", async () => {
+  await saveSettings(); await api("/settings/test", "POST"); toast("Test notification sent");
+}));
+
+// ---------- shell ----------
+
+document.addEventListener("click", e => {
+  if (e.target.matches("[data-close]")) e.target.closest("dialog").close();
+});
+
+function route() {
+  const view = location.hash === "#/stores" ? "stores" : "dashboard";
+  $("#dashboard").hidden = view !== "dashboard"; $("#stores").hidden = view !== "stores";
+  document.querySelectorAll("nav a").forEach(a => a.classList.toggle("on", a.dataset.view === view));
+  if (view === "stores") loadStores();
+}
+window.addEventListener("hashchange", route);
+
+async function load() {
+  try { products = await api("/products"); render(); } catch (e) { toast(e.message); }
+  loadAlerts();
+}
+
+route(); load();
+setInterval(() => { if (!document.querySelector("dialog[open]")) load(); }, 60000);
+</script>
+</body>
+</html>

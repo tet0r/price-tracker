@@ -1,0 +1,18 @@
+services:
+  pricetracker:
+    build: .
+    container_name: pricetracker
+    restart: unless-stopped
+    init: true
+    ports:
+      - "8080:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      # Default minutes between checks for newly added products
+      CHECK_INTERVAL_MINUTES: 360
+      # Fall back to headless Chromium when a plain HTTP fetch finds no price
+      USE_BROWSER: "true"
+      # Set a password to require a login (HTTP basic auth). Empty = no login.
+      AUTH_USERNAME: admin
+      AUTH_PASSWORD: ""

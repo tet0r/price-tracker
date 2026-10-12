@@ -1,0 +1,7 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+httpx[http2,brotli]>=0.27,<1
+beautifulsoup4>=4.12,<5
+lxml>=5,<7
+apprise>=1.8,<2
+playwright==1.49.1
