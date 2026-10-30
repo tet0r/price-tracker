@@ -4,6 +4,10 @@ All notable changes to Price Tracker are listed here, newest first. Version numb
 
 ## [Unreleased]
 
+### Added
+
+- An alert when a product needs attention: once one of its stores has failed 2 checks in a row (set with `ATTENTION_ALERT_AFTER`, `0` to turn off). It is sent once per run of failures, in-app, to Discord and to Apprise.
+
 ## [1.1.1] - 2026-10-12
 
 ### Changed

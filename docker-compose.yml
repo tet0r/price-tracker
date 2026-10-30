@@ -25,6 +25,8 @@ services:
       # Set a password to require a login (HTTP basic auth). Empty = no login.
       AUTH_USERNAME: admin
       AUTH_PASSWORD: ""
+      # Alert when a product's store has failed this many checks in a row (0 = off)
+      ATTENTION_ALERT_AFTER: 2
       # Ask GitHub every 5 minutes whether a newer release exists, and alert when one does
       UPDATE_CHECK: "true"
       # Optional. Both can also be set in the app under Settings.

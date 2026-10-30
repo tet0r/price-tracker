@@ -27,6 +27,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("pricetracker")
 
 DEFAULT_INTERVAL = int(os.environ.get("CHECK_INTERVAL_MINUTES", "360"))
+# Alert once a source has failed this many checks in a row (0 turns it off). One
+# failure is often a passing CAPTCHA or timeout, so the default waits for a second.
+ATTENTION_AFTER = int(os.environ.get("ATTENTION_ALERT_AFTER", "2"))
 AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "admin")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "")
@@ -49,7 +52,7 @@ TRACKING_PARAMS = {
 }
 TRACKING_PREFIXES = ("utm_", "pd_rd_", "pf_rd_", "hsa_", "mkt_")
 DISCORD_WEBHOOK_RE = re.compile(r"https://(ptb\.|canary\.)?discord(app)?\.com/api/webhooks/\d+/[\w-]+")
-DISCORD_COLORS = {"drop": 0x16A34A, "target": 0x2563EB, "stock": 0xD97706}
+DISCORD_COLORS = {"drop": 0x16A34A, "target": 0x2563EB, "stock": 0xD97706, "attention": 0xDC2626}
 
 
 # ---------- helpers ----------
@@ -299,8 +302,20 @@ async def check_url(u: dict) -> None:
         found, method = await scrape(u["url"], store)
     except ScrapeError as e:
         log.warning("check failed for %s: %s", u["url"], e)
-        db.execute("UPDATE urls SET last_checked = ?, last_error = ? WHERE id = ?", (now, str(e), u["id"]))
+        failures = u["fail_count"] + 1
+        db.execute(
+            "UPDATE urls SET last_checked = ?, last_error = ?, fail_count = ? WHERE id = ?",
+            (now, str(e), failures, u["id"]),
+        )
         found = e.partial
+        # Exactly at the threshold, so a source that keeps failing alerts once, not on every check
+        if ATTENTION_AFTER and failures == ATTENTION_AFTER:
+            product = get_product(u["product_id"])
+            await notify(
+                product, f"Needs attention: {(product['name'] or u['url'])[:80]}",
+                f"{store['name']} has failed {failures} checks in a row: {str(e)[:300]}",
+                u["url"], "attention",
+            )
     else:
         if found.price and (u["price"] is None or abs(found.price - u["price"]) >= 0.005):
             db.execute(
@@ -309,7 +324,7 @@ async def check_url(u: dict) -> None:
             )
         db.execute(
             "UPDATE urls SET price = COALESCE(?, price), availability = ?, last_checked = ?, "
-            "last_error = NULL WHERE id = ?",
+            "last_error = NULL, fail_count = 0 WHERE id = ?",
             (found.price, found.availability, now, u["id"]),
         )
         db.execute(
