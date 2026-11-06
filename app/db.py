@@ -75,6 +75,8 @@ MIGRATIONS = [
     ("products", "position", "INTEGER NOT NULL DEFAULT 0"),
     ("stores", "ai_extract", "INTEGER NOT NULL DEFAULT 0"),
     ("urls", "fail_count", "INTEGER NOT NULL DEFAULT 0"),
+    ("stores", "blocked_until", "INTEGER"),
+    ("stores", "block_count", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

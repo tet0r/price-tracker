@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from . import ai, db
 from .extract import UNAVAILABLE
-from .fetch import ScrapeError, _cookie_pairs, fetch_body, fetch_image, scrape
+from .fetch import ScrapeError, StoreBlocked, _cookie_pairs, fetch_body, fetch_image, scrape
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("pricetracker")
@@ -30,6 +30,9 @@ DEFAULT_INTERVAL = int(os.environ.get("CHECK_INTERVAL_MINUTES", "360"))
 # Alert once a source has failed this many checks in a row (0 turns it off). One
 # failure is often a passing CAPTCHA or timeout, so the default waits for a second.
 ATTENTION_AFTER = int(os.environ.get("ATTENTION_ALERT_AFTER", "2"))
+# When a store refuses requests, pause it: its Retry-After if given, else 30 minutes
+# doubling with each refusal in a row, never more than a day
+BACKOFF_FIRST, BACKOFF_MIN, BACKOFF_MAX = 30 * 60, 5 * 60, 24 * 3600
 AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "admin")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "")
@@ -181,6 +184,23 @@ async def cache_image(product: dict, page_url: str) -> None:
         (IMAGE_DIR / f"{product['id']}.{downloaded[1]}").write_bytes(downloaded[0])
 
 
+def human_duration(seconds: int) -> str:
+    hours, minutes = divmod(round(seconds / 60), 60)
+    return f"{hours}h {minutes}m" if hours and minutes else f"{hours}h" if hours else f"{minutes}m"
+
+
+def pause_store(store: dict, blocked: StoreBlocked) -> int:
+    """Hold off checking a store that refused us. Returns the pause in seconds."""
+    count = store["block_count"] + 1
+    delay = blocked.retry_after if blocked.retry_after is not None else BACKOFF_FIRST * 2 ** (count - 1)
+    delay = min(max(delay, BACKOFF_MIN), BACKOFF_MAX)
+    db.execute(
+        "UPDATE stores SET blocked_until = ?, block_count = ? WHERE id = ?",
+        (int(time.time()) + delay, count, store["id"]),
+    )
+    return delay
+
+
 def best_price(product_id: int) -> float | None:
     """Lowest price per unit among sources that can actually be bought right now.
 
@@ -202,7 +222,7 @@ def best_source(product_id: int) -> dict | None:
 
 def serialize(product: dict) -> dict:
     urls = db.query(
-        "SELECT u.*, s.name AS store_name, s.currency FROM urls u "
+        "SELECT u.*, s.name AS store_name, s.currency, s.blocked_until AS store_blocked_until FROM urls u "
         "JOIN stores s ON s.id = u.store_id WHERE u.product_id = ? ORDER BY u.id",
         (product["id"],),
     )
@@ -298,14 +318,20 @@ async def notify_changes(product: dict, old: float | None, new: float | None, wa
 
 async def check_url(u: dict) -> None:
     store, now = get_store(u["store_id"]), int(time.time())
+    if (store["blocked_until"] or 0) > now:
+        # Still inside a pause the store asked for: skip without sending anything
+        return
     try:
         found, method = await scrape(u["url"], store)
     except ScrapeError as e:
-        log.warning("check failed for %s: %s", u["url"], e)
+        message = str(e)
+        if isinstance(e, StoreBlocked):
+            message += f". Checks on {store['name']} are paused for {human_duration(pause_store(store, e))}."
+        log.warning("check failed for %s: %s", u["url"], message)
         failures = u["fail_count"] + 1
         db.execute(
             "UPDATE urls SET last_checked = ?, last_error = ?, fail_count = ? WHERE id = ?",
-            (now, str(e), failures, u["id"]),
+            (now, message, failures, u["id"]),
         )
         found = e.partial
         # Exactly at the threshold, so a source that keeps failing alerts once, not on every check
@@ -313,7 +339,7 @@ async def check_url(u: dict) -> None:
             product = get_product(u["product_id"])
             await notify(
                 product, f"Needs attention: {(product['name'] or u['url'])[:80]}",
-                f"{store['name']} has failed {failures} checks in a row: {str(e)[:300]}",
+                f"{store['name']} has failed {failures} checks in a row: {message[:400]}",
                 u["url"], "attention",
             )
     else:
@@ -328,7 +354,8 @@ async def check_url(u: dict) -> None:
             (found.price, found.availability, now, u["id"]),
         )
         db.execute(
-            "UPDATE stores SET last_method = ?, currency = COALESCE(currency, ?) WHERE id = ?",
+            "UPDATE stores SET last_method = ?, currency = COALESCE(currency, ?), blocked_until = NULL, "
+            "block_count = 0 WHERE id = ?",
             (method, found.currency, store["id"]),
         )
         log.info("%s -> %s %s (%s via %s)", u["url"], found.price, found.availability, found.source, method)

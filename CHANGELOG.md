@@ -7,6 +7,11 @@ All notable changes to Price Tracker are listed here, newest first. Version numb
 ### Added
 
 - An alert when a product needs attention: once one of its stores has failed 2 checks in a row (set with `ATTENTION_ALERT_AFTER`, `0` to turn off). It is sent once per run of failures, in-app, to Discord and to Apprise.
+- When a store refuses requests (HTTP 403, 429 or 503, or a bot-check page), checks on that store pause: for as long as the store asks, or 30 minutes doubling with each refusal up to a day. A live countdown shows when it will try again, on the product card, the product view, the "Need attention" list and the Stores page.
+
+### Changed
+
+- A refusal now says so ("costco.com is refusing automated requests (HTTP 429, rate limited)") instead of "no price found", and the tracker no longer retries with the headless browser straight after one.
 
 ## [1.1.1] - 2026-10-12
 

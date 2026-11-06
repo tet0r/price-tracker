@@ -157,6 +157,7 @@
   #update button { margin-left: auto; background: transparent; border-color: currentColor; color: inherit; }
   footer { margin-top: 40px; text-align: center; font-size: 12.5px; color: var(--muted); }
   footer a { color: inherit; }
+  .countdown { font-variant-numeric: tabular-nums; }
   #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text);
            color: var(--bg); padding: 10px 16px; border-radius: 10px; max-width: 90vw; display: none; z-index: 10; }
   [hidden] { display: none !important; }
@@ -421,6 +422,19 @@ function chart(lines, target) {
   return `<svg class="chart" viewBox="0 0 100 100" preserveAspectRatio="none">${line}${paths}</svg>`;
 }
 
+// Live "retrying in" timers. Each .countdown span holds its end time and is redrawn every second.
+const nowSec = () => Date.now() / 1000;
+const countdown = until => `<span class="countdown" data-until="${until}">${clock(until)}</span>`;
+function clock(until) {
+  const left = Math.ceil(until - nowSec());
+  if (left <= 0) return "any moment";
+  const h = Math.floor(left / 3600), m = Math.floor(left % 3600 / 60), s = String(left % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+}
+setInterval(() => document.querySelectorAll(".countdown").forEach(el => el.textContent = clock(+el.dataset.until)), 1000);
+// When a store has paused checks for a product, the soonest it will try again
+const pausedUntil = p => Math.min(...p.urls.map(u => u.store_blocked_until || 0).filter(t => t > nowSec()));
+
 const availabilityBadge = a => a && a !== "in_stock" ? `<span class="badge ${a}">${AVAILABILITY[a]}</span>` : "";
 
 // ---------- dashboard ----------
@@ -432,7 +446,9 @@ function card(p, draggable) {
   const where = d.best ? esc(d.best.store_name) + (p.urls.length > 1 ? ` · ${p.urls.length} sources` : "") : "No price yet";
   const foot = [];
   if (p.paused) foot.push(`<span class="badge">Paused</span>`);
-  if (d.attention) foot.push(`<span class="badge warn">Needs attention</span>`);
+  const until = pausedUntil(p);
+  if (until < Infinity) foot.push(`<span class="badge warn" title="The store refused automated requests, so checks are paused">Blocked · retry in ${countdown(until)}</span>`);
+  else if (d.attention) foot.push(`<span class="badge warn">Needs attention</span>`);
   if (d.good) foot.push(`<span class="badge down">Good to buy</span>`);
   if (p.target_price != null) foot.push(`<span class="badge">Target ${money(p.target_price, d.currency)}</span>`);
   return `<div class="card ${p.paused ? "paused" : ""}" data-id="${p.id}" tabindex="0" role="button" ${draggable ? `draggable="true"` : ""}>
@@ -477,7 +493,8 @@ const SMART_VIEWS = {
     empty: "Every product checked without problems.",
     head: ["Product", "Problem"],
     row: p => [p.urls.length
-      ? p.urls.filter(u => u.last_error).map(u => `<div class="error" style="margin-bottom:4px"><b>${esc(u.store_name)}</b>: ${esc(u.last_error)}</div>`).join("")
+      ? p.urls.filter(u => u.last_error).map(u => `<div class="error" style="margin-bottom:4px"><b>${esc(u.store_name)}</b>: ${esc(u.last_error)}${
+        u.store_blocked_until > nowSec() ? `<br>Retrying in ${countdown(u.store_blocked_until)}` : ""}</div>`).join("")
       : "No store URLs. Open it to add one."],
   },
 };
@@ -725,7 +742,8 @@ function renderProduct() {
   const first = d.series[0];
   const sources = p.urls.map((u, i) => `<tr>
       <td>${multi ? `<span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>` : ""}<a href="${esc(u.url)}" target="_blank" rel="noopener noreferrer">${esc(u.store_name)}</a>
-        ${u.last_error ? `<div class="error">${esc(u.last_error)}</div>` : ""}</td>
+        ${u.last_error ? `<div class="error">${esc(u.last_error)}</div>` : ""}
+        ${u.store_blocked_until > nowSec() ? `<div class="sub">Checks paused · retrying in ${countdown(u.store_blocked_until)}</div>` : ""}</td>
       <td class="num">${money(u.price, u.currency)}${u === d.best && multi ? " ★" : ""}</td>
       <td><input type="number" min="0.001" step="any" value="${u.units || 1}" data-units="${u.id}" aria-label="Pack size"></td>
       ${d.usesUnits ? `<td class="num">${u.price != null ? money(unitPrice(u), u.currency) : "—"}</td>` : ""}
@@ -832,13 +850,14 @@ $("#product").addEventListener("close", () => openId = null);
 
 function renderStores() {
   $("#store-list").innerHTML = stores.length ? `<table>
-    <tr><th>Name</th><th>Domains</th><th>Currency</th><th>Fetch</th><th>Custom rules</th><th>URLs</th><th></th></tr>
+    <tr><th>Name</th><th>Domains</th><th>Currency</th><th>Fetch</th><th>Custom rules</th><th>URLs</th><th>Status</th><th></th></tr>
     ${stores.map(s => {
       const custom = FIELDS.filter(f => s.strategies[f] && s.strategies[f].type !== "auto");
       if (s.ai_extract) custom.push("AI fallback");
       return `<tr><td><b>${esc(s.name)}</b></td><td>${esc(s.domains.join(", "))}</td><td>${esc(s.currency || "—")}</td>
         <td>${esc(s.service === "auto" && s.last_method ? `auto (${s.last_method})` : s.service)}</td>
         <td>${custom.length ? esc(custom.join(", ")) : `<span class="sub">auto-detect</span>`}</td><td>${s.url_count}</td>
+        <td>${s.blocked_until > nowSec() ? `<span class="badge warn">Paused · ${countdown(s.blocked_until)}</span>` : `<span class="sub">OK</span>`}</td>
         <td><button class="small" data-store="${s.id}">Edit</button></td></tr>`;
     }).join("")}</table>` : `<div class="empty">No stores yet. They're created as you add product URLs.</div>`;
 }

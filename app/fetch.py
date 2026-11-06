@@ -1,7 +1,13 @@
 import asyncio
+import email.utils
 import os
+import re
+import time
+from urllib.parse import urlparse
 
 import httpx
+
+from bs4 import BeautifulSoup
 
 from . import ai, netguard
 from .extract import UNAVAILABLE, Extracted, extract
@@ -33,6 +39,52 @@ class ScrapeError(Exception):
     def __init__(self, message: str, partial: Extracted | None = None):
         super().__init__(message)
         self.partial = partial or Extracted()
+
+
+class StoreBlocked(ScrapeError):
+    """The store refused the request (rate limit or bot protection). Checks should back off, not retry."""
+
+    def __init__(self, message: str, retry_after: int | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+# Answers that mean "not you, not now" rather than "this page is broken"
+BLOCK_STATUSES = {403, 429, 503}
+# Wording of common bot-check and rate-limit pages (Akamai, Cloudflare, Imperva, PerimeterX, ...)
+CHALLENGE_RE = re.compile(
+    r"access denied|pardon our interruption|are you a (human|robot)|verify (that )?you are (a )?human"
+    r"|captcha|request unsuccessful|just a moment\.\.\.|unusual traffic|too many requests|bot detection",
+    re.I,
+)
+
+
+def _retry_after(value: str | None) -> int | None:
+    """Seconds from a Retry-After header, which is either a number or an HTTP date."""
+    if not value:
+        return None
+    if value.strip().isdigit():
+        return int(value)
+    try:
+        return max(0, int(email.utils.parsedate_to_datetime(value).timestamp() - time.time()))
+    except (TypeError, ValueError):
+        return None
+
+
+def _looks_like_challenge(html: str) -> bool:
+    """A bot-check page: small, and its title or opening text says so."""
+    if len(html) > 300_000:
+        return False
+    soup = BeautifulSoup(html, "lxml")
+    title = soup.title.get_text(" ", strip=True) if soup.title else ""
+    opening = soup.body.get_text(" ", strip=True)[:1500] if soup.body else ""
+    return bool(CHALLENGE_RE.search(f"{title} {opening}"))
+
+
+def _refused(method: str, url: str, status: int, retry_after: int | None) -> StoreBlocked:
+    host = (urlparse(url).hostname or url).removeprefix("www.")
+    reason = "rate limited" if status == 429 else "blocked"
+    return StoreBlocked(f"{method}: {host} is refusing automated requests (HTTP {status}, {reason})", retry_after)
 
 
 def _cookie_pairs(cookies: str) -> list[tuple[str, str]]:
@@ -114,7 +166,9 @@ async def fetch_browser(url: str, cookies: str = "") -> str:
             if not netguard.ALLOW_PRIVATE:
                 await context.route("**/*", _block_private)
             page = await context.new_page()
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            response = await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            if response and response.status in BLOCK_STATUSES:
+                raise _refused("browser", url, response.status, _retry_after(response.headers.get("retry-after")))
             try:
                 await page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
@@ -142,8 +196,13 @@ async def _fetch(method: str, url: str, store: dict) -> str:
     fetcher = fetch_http if method == "http" else fetch_browser
     try:
         return await fetcher(url, store.get("cookies") or "")
+    except StoreBlocked:
+        raise
     except httpx.HTTPStatusError as e:
-        raise ScrapeError(f"{method}: site returned HTTP {e.response.status_code}")
+        status = e.response.status_code
+        if status in BLOCK_STATUSES:
+            raise _refused(method, url, status, _retry_after(e.response.headers.get("retry-after")))
+        raise ScrapeError(f"{method}: site returned HTTP {status}")
     except Exception as e:
         detail = str(e).splitlines()[0][:150] if str(e) else "failed"
         raise ScrapeError(f"{method}: {type(e).__name__}: {detail}")
@@ -155,6 +214,8 @@ async def fetch_body(url: str, store: dict) -> tuple[str, str]:
     for method in _fetch_order(store):
         try:
             return await _fetch(method, url, store), method
+        except StoreBlocked:
+            raise
         except ScrapeError as e:
             errors.append(str(e))
     raise ScrapeError("; ".join(errors))
@@ -170,6 +231,9 @@ async def scrape(url: str, store: dict) -> tuple[Extracted, str]:
     for method in _fetch_order(store):
         try:
             body = await _fetch(method, url, store)
+        except StoreBlocked:
+            # Trying another way straight after a refusal tends to extend the block
+            raise
         except ScrapeError as e:
             errors.append(str(e))
             continue
@@ -179,6 +243,9 @@ async def scrape(url: str, store: dict) -> tuple[Extracted, str]:
             found.availability = "out_of_stock"
         if found.price or found.availability in UNAVAILABLE:
             return found, method
+        if _looks_like_challenge(body):
+            host = (urlparse(url).hostname or url).removeprefix("www.")
+            raise StoreBlocked(f"{method}: {host} returned a bot-check page instead of the product")
         partial.name = partial.name or found.name
         partial.image = partial.image or found.image
         errors.append(f"{method}: no price found on page")
