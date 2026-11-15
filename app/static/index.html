@@ -84,6 +84,15 @@
   .card.drop { box-shadow: -4px 0 0 var(--accent); }
   .group.drop { outline: 2px dashed var(--accent); outline-offset: 6px; }
   .top { display: flex; gap: 11px; min-width: 0; }
+  .pic { position: relative; }
+  .alert-icon { color: var(--warn); display: inline-flex; }
+  .alert-icon svg { width: 100%; height: 100%; }
+  .card .alert-icon { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; padding: 6px;
+                      background: var(--warn-bg); border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+  .card.attention { border-color: var(--warn); }
+  .tile.alerting { position: relative; border-color: var(--warn); background: var(--warn-bg); }
+  .tile.alerting b { color: var(--warn); }
+  .tile .alert-icon { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); width: 34px; height: 34px; }
   .thumb { height: 150px; border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center;
            overflow: hidden; flex: none; }
   .thumb img { width: 100%; height: 100%; object-fit: contain; padding: 6px; }
@@ -256,7 +265,6 @@
     <label class="check"><input type="checkbox" name="stats"> Summary stats</label>
     <label class="check"><input type="checkbox" name="good"> What's good to buy now</label>
     <label class="check"><input type="checkbox" name="dropped"> Recently dropped</label>
-    <label class="check"><input type="checkbox" name="attention"> Needs attention</label>
     <p class="hint" style="margin-top:8px">Products are grouped by tag. Drag a group's title to reorder groups, drag a product to reorder it or move it to another group (which re-tags it), and use ▾ to collapse a group.</p>
     <div class="actions"><span class="spacer"></span><button type="button" data-close>Cancel</button><button class="primary">Save</button></div>
   </form>
@@ -311,6 +319,9 @@ const COLORS = ["#2563eb", "#d97706", "#9333ea", "#0d9488", "#db2777", "#65a30d"
 const INTERVALS = [[5, "5 minutes"], [15, "15 minutes"], [30, "30 minutes"], [60, "1 hour"], [180, "3 hours"], [360, "6 hours"], [720, "12 hours"], [1440, "24 hours"]];
 const FIELDS = ["title", "price", "image", "availability"];
 const SMART = [["good", "What's good to buy now"], ["dropped", "Recently dropped"], ["attention", "Needs attention"]];
+// Sections shown above the groups. Products needing attention are not repeated there: they lead their own group instead.
+const SECTIONS = SMART.filter(s => s[0] !== "attention");
+const ALERT_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 1.5 21h21L12 2.5Z" fill="currentColor"/><path d="M12 9v5.5M12 17.3v.2" stroke="var(--warn-bg)" stroke-width="2.4" stroke-linecap="round"/></svg>`;
 const AI_MODELS = { anthropic: "claude-opus-5-5", openai: "e.g. gpt-5-mini", gemini: "e.g. gemini-2.5-flash", ollama: "e.g. llama3.1" };
 const PAGE_SIZES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 let products = [], stores = [], openId = null, storeId = null, drag = null, page = 1;
@@ -451,8 +462,9 @@ function card(p, draggable) {
   else if (d.attention) foot.push(`<span class="badge warn">Needs attention</span>`);
   if (d.good) foot.push(`<span class="badge down">Good to buy</span>`);
   if (p.target_price != null) foot.push(`<span class="badge">Target ${money(p.target_price, d.currency)}</span>`);
-  return `<div class="card ${p.paused ? "paused" : ""}" data-id="${p.id}" tabindex="0" role="button" ${draggable ? `draggable="true"` : ""}>
-    ${thumb(p)}
+  const alert = d.attention ? `<span class="alert-icon" title="Needs attention: open it to see why">${ALERT_ICON}</span>` : "";
+  return `<div class="card ${p.paused ? "paused" : ""} ${d.attention ? "attention" : ""}" data-id="${p.id}" tabindex="0" role="button" ${draggable ? `draggable="true"` : ""}>
+    <div class="pic">${thumb(p)}${alert}</div>
     <div class="top">
       <div><div class="name">${esc(p.name || p.urls[0]?.url || "Untitled")}</div><div class="sub">${where}</div></div>
     </div>
@@ -543,18 +555,20 @@ function render() {
       ["Good to buy", matching("good").length, "good"], ["Dropped this week", matching("dropped").length, "dropped"],
       ["Need attention", matching("attention").length, "attention"]];
     html += `<div class="tiles">${tiles.map(([label, n, key]) => key
-      ? `<button class="tile" data-smart="${key}" title="Show details"><b>${n}</b>${label}</button>`
+      ? `<button class="tile ${key === "attention" && n ? "alerting" : ""}" data-smart="${key}" title="Show details">${key === "attention" && n ? `<span class="alert-icon">${ALERT_ICON}</span>` : ""}<b>${n}</b>${label}</button>`
       : `<div class="tile"><b>${n}</b>${label}</div>`).join("")}</div>`;
   }
-  for (const [key, title] of SMART) {
+  for (const [key, title] of SECTIONS) {
     const list = matching(key);
     if (list.length && shown(key)) html += `<section class="smart"><div class="group-head" data-smart="${key}" role="button" tabindex="0" title="Show details"><h2>${title}</h2><span class="sub">${list.length} · details</span></div>
       <div class="grid">${list.map(p => card(p, false)).join("")}</div></section>`;
   }
   // Pages run through the groups in order. Collapsed groups take no room and keep their header on every page.
+  // Within each group, products needing attention come first (otherwise in the saved order).
   const keys = groupKeys(), per = PAGE_SIZES.includes(dash.per_page) ? dash.per_page : 10;
+  const ordered = [...products].sort((a, b) => derived.get(b.id).attention - derived.get(a.id).attention);
   const entries = keys.filter(key => !dash.collapsed.includes(key))
-    .flatMap(key => products.filter(p => inGroup(p, key)).map(p => [key, p]));
+    .flatMap(key => ordered.filter(p => inGroup(p, key)).map(p => [key, p]));
   const pages = Math.max(1, Math.ceil(entries.length / per));
   page = Math.min(Math.max(page, 1), pages);
   const first = (page - 1) * per, visible = entries.slice(first, first + per);
@@ -722,12 +736,12 @@ $("#board").addEventListener("drop", e => {
 
 $("#open-customize").addEventListener("click", () => {
   const f = $("#customize-form");
-  for (const key of ["stats", ...SMART.map(s => s[0])]) f[key].checked = !dash.hidden.includes(key);
+  for (const key of ["stats", ...SECTIONS.map(s => s[0])]) f[key].checked = !dash.hidden.includes(key);
   $("#customize").showModal();
 });
 $("#customize-form").addEventListener("submit", e => {
   e.preventDefault();
-  dash.hidden = ["stats", ...SMART.map(s => s[0])].filter(key => !e.target[key].checked);
+  dash.hidden = ["stats", ...SECTIONS.map(s => s[0])].filter(key => !e.target[key].checked);
   $("#customize").close(); render(); saveDash();
 });
 
@@ -1043,6 +1057,14 @@ $("#test-notify").addEventListener("click", e => busy(e.target, "Sending…", as
 document.addEventListener("click", e => {
   if (e.target.matches("[data-close]")) e.target.closest("dialog").close();
 });
+// Read-only pop-ins close on a click outside them (dialogs with forms don't, so edits aren't lost)
+for (const dialog of [$("#alerts"), $("#smart")]) {
+  dialog.addEventListener("click", e => {
+    if (e.target !== dialog) return;
+    const r = dialog.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dialog.close();
+  });
+}
 
 function showTheme() {
   const dark = document.documentElement.dataset.theme === "dark";

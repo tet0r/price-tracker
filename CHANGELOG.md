@@ -4,6 +4,8 @@ All notable changes to Price Tracker are listed here, newest first. Version numb
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-15
+
 ### Added
 
 - An alert when a product needs attention: once one of its stores has failed 2 checks in a row (set with `ATTENTION_ALERT_AFTER`, `0` to turn off). It is sent once per run of failures, in-app, to Discord and to Apprise.
@@ -11,6 +13,8 @@ All notable changes to Price Tracker are listed here, newest first. Version numb
 
 ### Changed
 
+- Products that need attention are no longer listed twice. Instead of a separate section they move to the top of their group, with a large alert icon and an amber border. The "Need attention" tile shows the same icon when anything needs attention.
+- The Alerts and smart-section pop-ins close when you click outside them.
 - A refusal now says so ("costco.com is refusing automated requests (HTTP 429, rate limited)") instead of "no price found", and the tracker no longer retries with the headless browser straight after one.
 
 ## [1.1.1] - 2026-10-12
@@ -74,7 +78,8 @@ First versioned release.
 - Saved secrets (webhooks, notification URLs, store cookies, AI key) are never sent back to the browser in full.
 - The saved AI key is cleared if the provider or its address changes.
 
-[Unreleased]: https://github.com/tet0r/price-tracker/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/tet0r/price-tracker/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/tet0r/price-tracker/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/tet0r/price-tracker/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/tet0r/price-tracker/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/tet0r/price-tracker/releases/tag/v1.0.0
