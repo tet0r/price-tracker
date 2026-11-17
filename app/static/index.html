@@ -408,7 +408,8 @@ function derive(p) {
     good: !!best && !soldOut && ((p.target_price != null && price <= p.target_price)
       || (series.length > 1 && price <= min && price < avg)),
     dropped: pct != null && pct < 0 && now - last[0] < 7 * 86400,
-    attention: !p.urls.length || p.urls.some(u => u.last_error),
+    // A paused product isn't being checked, so its old errors don't need looking at
+    attention: !p.paused && (!p.urls.length || p.urls.some(u => u.last_error)),
   };
 }
 
@@ -458,7 +459,7 @@ function card(p, draggable) {
   const foot = [];
   if (p.paused) foot.push(`<span class="badge">Paused</span>`);
   const until = pausedUntil(p);
-  if (until < Infinity) foot.push(`<span class="badge warn" title="The store refused automated requests, so checks are paused">Blocked · retry in ${countdown(until)}</span>`);
+  if (until < Infinity && !p.paused) foot.push(`<span class="badge warn" title="The store refused automated requests, so checks are paused">Blocked · retry in ${countdown(until)}</span>`);
   else if (d.attention) foot.push(`<span class="badge warn">Needs attention</span>`);
   if (d.good) foot.push(`<span class="badge down">Good to buy</span>`);
   if (p.target_price != null) foot.push(`<span class="badge">Target ${money(p.target_price, d.currency)}</span>`);

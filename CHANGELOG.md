@@ -4,6 +4,10 @@ All notable changes to Price Tracker are listed here, newest first. Version numb
 
 ## [Unreleased]
 
+### Changed
+
+- A paused product no longer counts as needing attention, so it loses the alert icon and the "Blocked" countdown and stays in its normal place.
+
 ## [1.2.0] - 2026-11-15
 
 ### Added
